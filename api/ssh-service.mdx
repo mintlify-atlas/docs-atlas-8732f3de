@@ -1,0 +1,148 @@
+---
+title: SSHService
+description: Forward Git operations over SSH connections to Gitaly
+---
+
+SSHService provides the server-side implementation for handling Git operations initiated over SSH, including upload-pack (fetch/clone), receive-pack (push), and upload-archive operations.
+
+## SSHUploadPack
+
+Forwards `git upload-pack` to Gitaly for SSH sessions. Used when users clone or fetch repositories over SSH.
+
+**Streaming RPC**: Both request and response are streamed.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to upload pack from. Must be present in the first message
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Raw data to be copied to 'git upload-pack' standard input
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="stdout" type="bytes">
+  Raw data from 'git upload-pack' standard output (streamed)
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Raw data from 'git upload-pack' standard error (streamed)
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  Exit status of the command. Only returned when the command has finished
+</ResponseField>
+
+## SSHUploadPackWithSidechannel
+
+Forwards `git upload-pack` to Gitaly for SSH sessions using the sidechannel protocol. This is a more efficient implementation for large data transfers.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to upload pack from
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="(empty)">
+  Empty response. Data is transferred via sidechannel
+</ResponseField>
+
+## SSHReceivePack
+
+Forwards `git receive-pack` to Gitaly for SSH sessions. Used when users push to repositories over SSH.
+
+**Streaming RPC**: Both request and response are streamed.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to receive pack into. Must be present in the first message
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Raw data to be copied to 'git receive-pack' standard input
+</ParamField>
+
+<ParamField path="gl_id" type="string">
+  GitLab user ID. Becomes GL_ID environment variable for 'git receive-pack'
+</ParamField>
+
+<ParamField path="gl_repository" type="string">
+  GitLab repository identifier. Becomes GL_REPOSITORY environment variable for 'git receive-pack'
+</ParamField>
+
+<ParamField path="gl_username" type="string">
+  GitLab username. Becomes GL_USERNAME environment variable for 'git receive-pack'
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+### Response
+
+<ResponseField name="stdout" type="bytes">
+  Raw data from 'git receive-pack' standard output (streamed)
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Raw data from 'git receive-pack' standard error (streamed)
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  Exit status of the command. Only returned when the command has finished
+</ResponseField>
+
+## SSHUploadArchive
+
+Forwards `git upload-archive` to Gitaly for SSH sessions. Used when users request repository archives over SSH.
+
+**Streaming RPC**: Both request and response are streamed.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to upload archive from. Must be present in the first message
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Raw data to be copied to 'git upload-archive' standard input
+</ParamField>
+
+### Response
+
+<ResponseField name="stdout" type="bytes">
+  Raw data from 'git upload-archive' standard output (streamed)
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Raw data from 'git upload-archive' standard error (streamed)
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  Exit status of the command. Only set on the last message
+</ResponseField>

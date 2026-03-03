@@ -1,0 +1,257 @@
+---
+title: Testing
+description: Guide to testing Gitaly with Go and Ruby tests
+---
+
+## Test Setup
+
+Gitaly's tests are mostly written in Go, but it is possible to write RSpec tests too.
+
+Generally, you should always write new tests in Go even when testing Ruby code, since we're planning to gradually rewrite everything in Go and want to avoid having to rewrite the tests as well.
+
+### Preparing Test Environment
+
+Before running tests, you need to set up test repositories:
+
+```bash
+make prepare-tests
+```
+
+This will clone test repositories into:
+- `_build/testrepos/gitlab-test.git`
+- `_build/testrepos/gitlab-git-test.git`
+
+To prevent fragile tests, we use fixed `packed-refs` files for these repositories. They get installed by make from files in `_support`.
+
+### Test Repositories
+
+Gitaly uses two test repositories. These repositories get cloned by `make prepare-tests`.
+
+#### Updating Test Repositories
+
+To add a new branch to a test repository (example with gitlab-test):
+
+```bash
+make prepare-tests
+git clone _build/testrepos/gitlab-test.git _build/gitlab-test
+
+cd _build/gitlab-test
+# Make new branch, add commits, etc.
+git push origin my-new-branch  # push to local copy
+
+cd ../..
+
+# Push to public, official copy
+git -C _build/testrepos/gitlab-test.git push origin refs/heads/my-new-branch
+git -C _build/testrepos/gitlab-test.git gc
+cp _build/testrepos/gitlab-test.git/packed-refs _support/gitlab-test.git-packed-refs
+```
+
+### Praefect Database Setup
+
+Because Praefect lives in the same repository, we need to provide database connection information to run tests successfully. See the [glsql package documentation](https://gitlab.com/gitlab-org/gitaly/-/blob/master/internal/praefect/datastore/glsql/doc.go) for more info.
+
+The easiest way to set up a Postgres database instance is to run it as a Docker container:
+
+```bash
+docker rm -f $(docker ps -q --all -f name=praefect-pg) > /dev/null 2>&1
+docker run --name praefect-pg -p 5432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust -d postgres:12.6
+```
+
+## Running Tests
+
+### Full Test Suite
+
+To run the full test suite:
+
+```bash
+make test
+```
+
+This executes both Go and Ruby tests.
+
+### Go Tests
+
+#### Running All Go Tests
+
+```bash
+make test-go
+```
+
+#### Test Structure
+
+Each RPC must have end-to-end tests at the service level. Optionally, you can add unit tests for functions that need more coverage.
+
+A typical set of Go tests for an RPC consists of:
+- A success test
+- A failure test (usually a table-driven test using `t.Run`)
+- Sometimes a validation test
+
+Our Go RPC tests use in-process test servers that only implement the service the current RPC belongs to. For example, if you are working on an RPC in the 'RepositoryService', your tests would go in `internal/gitaly/service/repository/your_rpc_test.go`.
+
+#### Running Specific Tests
+
+When fixing a specific test failure, it's inefficient to run `make test` all the time. To run just one test, you need to know:
+- The package it lives in (e.g., `internal/gitaly/service/repository`)
+- The test name (e.g., `TestRepositoryExists`)
+
+```bash
+TEST_PACKAGES=./internal/gitaly/service/repository TEST_OPTIONS="-count=1 -run=TestRepositoryExists" make test-go
+```
+
+#### Testing with Praefect
+
+```bash
+make test-with-praefect
+```
+
+#### Race Detection
+
+Run Go tests with race detection enabled:
+
+```bash
+make race-go
+```
+
+#### Benchmarks
+
+Run Go benchmarks:
+
+```bash
+make bench
+```
+
+### Ruby Tests
+
+#### Running RSpec Tests
+
+```bash
+make rspec
+```
+
+Or from the Ruby directory:
+
+```bash
+cd ruby
+bundle exec rspec
+```
+
+It is possible to write end-to-end RSpec tests that run against a full Gitaly server. This is more or less equivalent to the service-level tests we write in Go. You can also write unit tests for Ruby code in RSpec.
+
+**Important:** Because the RSpec tests use a full Gitaly server, you must re-compile Gitaly every time you change the Go code. Run `make` to recompile.
+
+## Test Configuration
+
+You can customize test execution with the following variables:
+
+### TEST_PACKAGES
+
+Specify which Go packages to test:
+
+```bash
+TEST_PACKAGES=./internal/gitaly/service/repository make test-go
+```
+
+### TEST_OPTIONS
+
+Pass additional options to `go test`:
+
+```bash
+TEST_OPTIONS="-count=1 -run=TestMyFunction" make test-go
+```
+
+### TEST_FORMAT
+
+Specify the output format used to print tests:
+- `standard-verbose`
+- `standard-quiet`
+- `short` (default)
+
+```bash
+TEST_FORMAT=standard-verbose make test-go
+```
+
+## Writing Tests
+
+### Testing Libraries
+
+When writing tests, prefer using [testify](https://github.com/stretchr/testify)'s [require](https://github.com/stretchr/testify/tree/master/require) and [assert](https://github.com/stretchr/testify/tree/master/assert) methods to set expectations over functions like `t.Fatal()` called directly on `testing.T`.
+
+### Test Helpers
+
+The `testhelper` package provides functions to create configurations to run Gitaly and helpers to run a Gitaly gRPC server:
+
+- Create test configuration
+- Run Gitaly
+- Clone test repository
+
+Examples:
+- [Create test configuration](https://gitlab.com/gitlab-org/gitaly/-/blob/aa098de7b267e3d6cb8a05e7862a1ad34f8f2ab5/internal/gitaly/service/ref/testhelper_test.go#L43)
+- [Run Gitaly](https://gitlab.com/gitlab-org/gitaly/-/blob/aa098de7b267e3d6cb8a05e7862a1ad34f8f2ab5/internal/gitaly/service/ref/testhelper_test.go#L57)
+- [Clone test repository](https://gitlab.com/gitlab-org/gitaly/-/blob/aa098de7b267e3d6cb8a05e7862a1ad34f8f2ab5/internal/gitaly/service/ref/find_all_tags_test.go#L30)
+
+## Debugging and Instrumentation
+
+### Debug Logging
+
+Debug logging can be enabled in Gitaly using `level = "debug"` under `[logging]` in config.toml.
+
+### Git Tracing
+
+Gitaly will re-export `GIT_TRACE*` [environment variables](https://git-scm.com/book/en/v2/Git-Internals-Environment-Variables) if they are set.
+
+To see what Git is doing internally, set `GIT_TRACE=true`. Note that since git stderr stream will be logged at debug level, you need to enable debug logging in `config.toml`:
+
+```shell
+GIT_TRACE=true ./gitaly config.toml
+```
+
+### Testing with Instrumentation
+
+For testing with instrumentation and Prometheus metrics, use the `instrumented-cluster` docker compose configuration in `_support/instrumented-cluster`. This cluster creates several services:
+
+| Service | Endpoint |
+|---------|----------|
+| Gitaly | http://localhost:9999 |
+| Gitaly Metrics and pprof | http://localhost:9236 |
+| Prometheus | http://localhost:9090 |
+| cAdvisor | http://localhost:8080 |
+| Grafana | http://localhost:3000 (login: admin/admin) |
+
+The gitaly service uses the `gitlab/gitaly:latest` image, which you need to build using `make docker` before starting the cluster.
+
+Start the cluster from the `_support/instrumented-cluster` directory:
+
+```shell
+docker-compose up --remove-orphans
+```
+
+The Gitaly service is intentionally limited to 50% CPU and 200MB of memory. This can be adjusted in the `docker-compose.yml` file.
+
+Once the cluster has started, it will clone the `gitlab-org/gitlab-ce` repository for testing purposes.
+
+You can test using tools like [gitaly-bench](https://gitlab.com/gitlab-org/gitaly-bench):
+
+```shell
+gitaly-bench -concurrency 100 -repo gitlab-org/gitlab-ce.git find-all-branches
+```
+
+Or profiling tools like [go-torch](https://github.com/uber/go-torch) for generating flame graphs:
+
+```shell
+go-torch --url http://localhost:9236 -p > flamegraph.svg
+```
+
+## Code Coverage
+
+Generate coverage report via Go tests:
+
+```bash
+make cover
+```
+
+This will:
+- Run all tests with coverage enabled
+- Generate an HTML coverage report at `_build/cover/all.html`
+- Generate a Cobertura XML report at `_build/cover/cobertura.xml`
+- Print total test coverage to the console

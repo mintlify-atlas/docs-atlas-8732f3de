@@ -1,0 +1,710 @@
+---
+title: OperationsService
+description: Perform mutating git operations on behalf of users with access control validation
+---
+
+OperationsService provides an interface for performing mutating git operations on a repository on behalf of a user. The user's operation is treated as untrusted. Any reference update is checked against GitLab's `/allowed` endpoint.
+
+## UserCreateBranch
+
+Creates a new branch in the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the branch will be created
+</ParamField>
+
+<ParamField path="branch_name" type="bytes" required>
+  Name of the branch to create
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User performing the operation
+</ParamField>
+
+<ParamField path="start_point" type="bytes" required>
+  Commit SHA or reference to create the branch from
+</ParamField>
+
+### Response
+
+<ResponseField name="branch" type="Branch">
+  The created branch object
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error returned by the pre-receive hook. Empty string if no error occurred
+</ResponseField>
+
+## UserUpdateBranch
+
+Updates an existing branch to point to a new commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the branch
+</ParamField>
+
+<ParamField path="branch_name" type="bytes" required>
+  Name of the branch to update
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User performing the operation
+</ParamField>
+
+<ParamField path="newrev" type="bytes" required>
+  New commit SHA to update the branch to
+</ParamField>
+
+<ParamField path="oldrev" type="bytes" required>
+  Current commit SHA of the branch for safety check
+</ParamField>
+
+### Response
+
+<ResponseField name="pre_receive_error" type="string">
+  Error returned by the pre-receive hook. Empty string if no error occurred
+</ResponseField>
+
+## UserDeleteBranch
+
+Deletes a branch from the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the branch
+</ParamField>
+
+<ParamField path="branch_name" type="bytes" required>
+  Name of the branch to delete
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User performing the operation
+</ParamField>
+
+### Response
+
+<ResponseField name="pre_receive_error" type="string">
+  Error returned by the pre-receive hook. Empty string if no error occurred
+</ResponseField>
+
+## UserCreateTag
+
+Creates a new tag in the repository. Creates either a lightweight or annotated tag based on whether a message is provided.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository in which the tag shall be created
+</ParamField>
+
+<ParamField path="tag_name" type="bytes" required>
+  Name of the tag to create
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User as which the tag shall be created
+</ParamField>
+
+<ParamField path="target_revision" type="bytes" required>
+  Revision which the tag should point to
+</ParamField>
+
+<ParamField path="message" type="bytes">
+  Message for the tag. If empty, a lightweight tag is created. Otherwise, an annotated tag is created
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp to use for the created tag. Only used for annotated tags. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="tag" type="Tag">
+  The newly created tag
+</ResponseField>
+
+<ResponseField name="exists" type="bool">
+  Denotes whether the tag already existed
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if updating the tag failed because of a pre-receive error
+</ResponseField>
+
+## UserDeleteTag
+
+Deletes a tag from the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the tag
+</ParamField>
+
+<ParamField path="tag_name" type="bytes" required>
+  Name of the tag to delete
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User performing the operation
+</ParamField>
+
+### Response
+
+<ResponseField name="pre_receive_error" type="string">
+  Error returned by the pre-receive hook. Empty string if no error occurred
+</ResponseField>
+
+## UserMergeToRef
+
+Creates a merge commit and updates target_ref to point to that new commit. The first parent of the merge commit (the main line) is taken from first_parent_ref. The second parent is specified by its commit ID in source_sha. If target_ref already exists it will be overwritten.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository in which the merge shall be computed
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User as which the merge commit shall be created
+</ParamField>
+
+<ParamField path="source_sha" type="string" required>
+  Object ID of the second parent of the computed merge
+</ParamField>
+
+<ParamField path="target_ref" type="bytes" required>
+  Fully qualified reference which should be updated with the computed merge commit
+</ParamField>
+
+<ParamField path="message" type="bytes" required>
+  Message to use for the merge commit
+</ParamField>
+
+<ParamField path="first_parent_ref" type="bytes" required>
+  Name of the reference to use as the first parent of the computed merge
+</ParamField>
+
+<ParamField path="allow_conflicts" type="bool">
+  Allow conflicts to occur. Conflict markers will be part of the merge commit
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp to use for the merge commit. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="commit_id" type="string">
+  Object ID of the computed merge commit
+</ResponseField>
+
+## UserMergeBranch
+
+Tries to merge the given commit into the target branch. The merge commit is created with the given user as author/committer and the given message. This RPC requires confirmation to make any user-visible changes to the repository.
+
+**Streaming RPC**: This is a bidirectional streaming RPC. First request contains merge details, server responds with the merge commit ID. Second request with `apply = true` confirms the merge.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to compute the merge for (first message only)
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User to compute the merge as. Used as author and committer (first message only)
+</ParamField>
+
+<ParamField path="commit_id" type="string" required>
+  Object ID of the commit to merge into the target branch (first message only)
+</ParamField>
+
+<ParamField path="branch" type="bytes" required>
+  Branch into which the commit shall be merged (first message only)
+</ParamField>
+
+<ParamField path="message" type="bytes" required>
+  Message to use for the merge commit (first message only)
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp for the merge commit. Current time is used if not set (first message only)
+</ParamField>
+
+<ParamField path="apply" type="bool">
+  Must be set to true in the second message to confirm and apply the merge
+</ParamField>
+
+### Response
+
+<ResponseField name="commit_id" type="string">
+  Merge commit ID that the branch will be updated to (first response)
+</ResponseField>
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Set if the merge has been applied to the branch (second response)
+</ResponseField>
+
+## UserFFBranch
+
+Tries to perform a fast-forward merge of the given branch to the given commit. If the merge is not a fast-forward merge, the request will fail. Returns an empty response if updating the reference fails due to a race condition.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository for which to perform the fast-forward merge
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User to perform the fast-forward merge as. Used for authorization checks
+</ParamField>
+
+<ParamField path="commit_id" type="string" required>
+  Commit ID to update the branch to
+</ParamField>
+
+<ParamField path="branch" type="bytes" required>
+  Name of the branch to update (branch name only, not fully qualified reference)
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Details about the updated branch
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error returned by the pre-receive hook. Empty string if no error occurred
+</ResponseField>
+
+## UserCherryPick
+
+Tries to perform a cherry-pick of a given commit onto a branch.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository into which the cherry-pick shall be performed
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User to perform the cherry-pick as. Used for authorization and as the committer
+</ParamField>
+
+<ParamField path="commit" type="GitCommit" required>
+  Commit to cherry-pick onto the given branch
+</ParamField>
+
+<ParamField path="branch_name" type="bytes" required>
+  Name of the branch onto which the cherry-pick shall be executed
+</ParamField>
+
+<ParamField path="message" type="bytes" required>
+  Message to use for the cherry-picked commit
+</ParamField>
+
+<ParamField path="start_branch_name" type="bytes">
+  Used if branch_name doesn't exist. Branch will be created from this branch
+</ParamField>
+
+<ParamField path="start_repository" type="Repository">
+  Repository containing start_branch_name if branch_name doesn't exist
+</ParamField>
+
+<ParamField path="dry_run" type="bool">
+  Compute the cherry-pick but don't update the target branch
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp for the cherry-picked commit's committer date. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Details about the updated branch
+</ResponseField>
+
+<ResponseField name="create_tree_error" type="string">
+  Error message if creation of the tree failed
+</ResponseField>
+
+<ResponseField name="commit_error" type="string">
+  Error message if updating the reference failed
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if the pre-receive hook failed
+</ResponseField>
+
+<ResponseField name="create_tree_error_code" type="CreateTreeError">
+  Error code if creation of the tree failed. Values: NONE (0), EMPTY (1), CONFLICT (2)
+</ResponseField>
+
+## UserCommitFiles
+
+Builds a commit from a stream of actions and updates the target branch to point to it. The first message must contain a header with commit details, followed by a variable number of actions.
+
+**Streaming RPC**: Send header first, then stream actions. Each action has a header followed by content if needed.
+
+### Request
+
+<ParamField path="header" type="UserCommitFilesRequestHeader" required>
+  Must be sent as the first message in the stream
+</ParamField>
+
+<ParamField path="header.repository" type="Repository" required>
+  Target repository where to apply the commit
+</ParamField>
+
+<ParamField path="header.user" type="User" required>
+  User performing the call
+</ParamField>
+
+<ParamField path="header.branch_name" type="bytes" required>
+  Name of the branch to point to the new commit
+</ParamField>
+
+<ParamField path="header.commit_message" type="bytes" required>
+  Message to use in the commit
+</ParamField>
+
+<ParamField path="header.commit_author_name" type="bytes">
+  Commit author's name. User's name is used if not provided
+</ParamField>
+
+<ParamField path="header.commit_author_email" type="bytes">
+  Commit author's email. User's email is used if not provided
+</ParamField>
+
+<ParamField path="header.start_branch_name" type="bytes">
+  Branch whose commit to use as parent. Takes priority over branch_name
+</ParamField>
+
+<ParamField path="header.start_repository" type="Repository">
+  Repository containing the parent commit. Uses repository if not specified
+</ParamField>
+
+<ParamField path="header.force" type="bool">
+  Force update the target branch to point to the new commit
+</ParamField>
+
+<ParamField path="header.start_sha" type="string">
+  SHA of commit to use as parent. Takes priority over start_branch_name and branch_name
+</ParamField>
+
+<ParamField path="header.timestamp" type="Timestamp">
+  Optional timestamp to use for the commit. Current time is used if not set
+</ParamField>
+
+<ParamField path="action" type="UserCommitFilesAction">
+  Action to build a commit. Multiple actions can be sent per stream
+</ParamField>
+
+<ParamField path="action.header" type="UserCommitFilesActionHeader">
+  Action details. Must be sent before content
+</ParamField>
+
+<ParamField path="action.header.action" type="ActionType" required>
+  Type of action: CREATE (0), CREATE_DIR (1), UPDATE (2), MOVE (3), DELETE (4), CHMOD (5)
+</ParamField>
+
+<ParamField path="action.header.file_path" type="bytes" required>
+  Path of the file or directory being modified
+</ParamField>
+
+<ParamField path="action.header.previous_path" type="bytes">
+  Used in MOVE action to specify the path of the file to move
+</ParamField>
+
+<ParamField path="action.header.base64_content" type="bool">
+  Indicates the content is base64 encoded (RFC 4648). Only for CREATE and UPDATE actions
+</ParamField>
+
+<ParamField path="action.header.execute_filemode" type="bool">
+  Create file with execute permissions. Only for CREATE and CHMOD actions
+</ParamField>
+
+<ParamField path="action.header.infer_content" type="bool">
+  For MOVE actions that only change path, not content. Set to true instead of populating content
+</ParamField>
+
+<ParamField path="action.content" type="bytes">
+  File content streamed in one or more messages. Only for CREATE and UPDATE actions
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Details of the commit and branch update
+</ResponseField>
+
+<ResponseField name="index_error" type="string">
+  Error message for invalid actions (e.g., creating a file that already exists)
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if the pre-receive hook failed
+</ResponseField>
+
+## UserRebaseConfirmable
+
+Rebases the given remote branch onto a target branch. The remote branch may be part of another repository. This RPC requires confirmation to make any user-visible changes to the repository.
+
+**Streaming RPC**: First request contains rebase details, server responds with the rebase commit ID. Second request with `apply = true` confirms the rebase.
+
+### Request
+
+<ParamField path="header" type="Header" required>
+  Must be sent as the first message (first message only)
+</ParamField>
+
+<ParamField path="header.repository" type="Repository" required>
+  Repository in which the rebase will be computed and applied
+</ParamField>
+
+<ParamField path="header.user" type="User" required>
+  User to compute the rebase as. Used as committer of rebased commits
+</ParamField>
+
+<ParamField path="header.branch" type="bytes" required>
+  Branch onto which the rebase shall happen
+</ParamField>
+
+<ParamField path="header.branch_sha" type="string" required>
+  Expected object ID that branch currently points to. Safety guard against races
+</ParamField>
+
+<ParamField path="header.remote_repository" type="Repository" required>
+  Repository containing the branch to rebase onto the local branch
+</ParamField>
+
+<ParamField path="header.remote_branch" type="bytes" required>
+  Branch name to rebase onto the local branch
+</ParamField>
+
+<ParamField path="header.git_push_options" type="string[]">
+  Options to pass to git hooks when updating the local branch
+</ParamField>
+
+<ParamField path="header.timestamp" type="Timestamp">
+  Optional timestamp for rebased commits as committer date. Current time is used if not set
+</ParamField>
+
+<ParamField path="apply" type="bool">
+  Must be set to true in the second message to confirm the rebase
+</ParamField>
+
+### Response
+
+<ResponseField name="rebase_sha" type="string">
+  Rebase commit ID that the branch will be updated to (first response)
+</ResponseField>
+
+<ResponseField name="rebase_applied" type="bool">
+  Confirms that the rebase has been applied to the branch (second response)
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if the rebase failed due to hooks
+</ResponseField>
+
+<ResponseField name="git_error" type="string">
+  Error message if git operations failed
+</ResponseField>
+
+## UserRevert
+
+Tries to perform a revert of a given commit onto a branch.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository in which the revert shall be applied
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User to perform the revert as. Used for authorization and as author/committer
+</ParamField>
+
+<ParamField path="commit" type="GitCommit" required>
+  Commit to revert
+</ParamField>
+
+<ParamField path="branch_name" type="bytes" required>
+  Name of the branch onto which the reverted commit shall be committed
+</ParamField>
+
+<ParamField path="message" type="bytes" required>
+  Message to use for the revert commit
+</ParamField>
+
+<ParamField path="start_branch_name" type="bytes">
+  Used if branch_name doesn't exist. Branch will be created from this branch
+</ParamField>
+
+<ParamField path="start_repository" type="Repository">
+  Repository containing start_branch_name if branch_name doesn't exist
+</ParamField>
+
+<ParamField path="dry_run" type="bool">
+  Compute the revert but don't update the target branch
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp for the revert commit's committer date. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Details about the updated branch
+</ResponseField>
+
+<ResponseField name="create_tree_error" type="string">
+  Error message if creation of the tree failed
+</ResponseField>
+
+<ResponseField name="commit_error" type="string">
+  Error message if updating the reference failed
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if the pre-receive hook failed
+</ResponseField>
+
+<ResponseField name="create_tree_error_code" type="CreateTreeError">
+  Error code if creation of the tree failed. Values: NONE (0), EMPTY (1), CONFLICT (2)
+</ResponseField>
+
+## UserSquash
+
+Squashes a range of commits into a single commit. Returns the object ID of the newly created squash commit on success.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository into which the squashed commit shall be written
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User for authorization checks
+</ParamField>
+
+<ParamField path="start_sha" type="string" required>
+  Object ID of the start commit of the range to squash. Must be an ancestor of end_sha
+</ParamField>
+
+<ParamField path="end_sha" type="string" required>
+  Object ID of the end commit of the range to squash
+</ParamField>
+
+<ParamField path="author" type="User" required>
+  User to be used as the author of the squashed commit
+</ParamField>
+
+<ParamField path="commit_message" type="bytes" required>
+  Message to use for the squashed commit
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp for the squashed commit as committer date. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="squash_sha" type="string">
+  Object ID of the squashed commit
+</ResponseField>
+
+## UserApplyPatch
+
+Applies patches to a given branch.
+
+**Streaming RPC**: First message contains header with configuration, subsequent messages contain patch data.
+
+### Request
+
+<ParamField path="header" type="Header" required>
+  Must be sent as the first message
+</ParamField>
+
+<ParamField path="header.repository" type="Repository" required>
+  Repository to which patches shall be applied
+</ParamField>
+
+<ParamField path="header.user" type="User" required>
+  User for authentication
+</ParamField>
+
+<ParamField path="header.target_branch" type="bytes" required>
+  Branch onto which the patches shall be applied
+</ParamField>
+
+<ParamField path="header.timestamp" type="Timestamp">
+  Optional timestamp for the commits as committer date. Current time is used if not set
+</ParamField>
+
+<ParamField path="patches" type="bytes">
+  Patch data streamed in subsequent messages
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Information about the updated branch
+</ResponseField>
+
+## UserUpdateSubmodule
+
+Updates a submodule to point to a new commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository in which the submodule shall be updated
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  User for authorization and as author/committer of the resulting commit
+</ParamField>
+
+<ParamField path="commit_sha" type="string" required>
+  Object ID the submodule shall be updated to
+</ParamField>
+
+<ParamField path="branch" type="bytes" required>
+  Branch to update (unqualified name, without refs/heads/ prefix)
+</ParamField>
+
+<ParamField path="submodule" type="bytes" required>
+  Path to the submodule to update
+</ParamField>
+
+<ParamField path="commit_message" type="bytes" required>
+  Message for the update commit
+</ParamField>
+
+<ParamField path="timestamp" type="Timestamp">
+  Optional timestamp for the update commit as committer date. Current time is used if not set
+</ParamField>
+
+### Response
+
+<ResponseField name="branch_update" type="OperationBranchUpdate">
+  Information about the updated branch
+</ResponseField>
+
+<ResponseField name="pre_receive_error" type="string">
+  Error message if the pre-receive hook rejects the update
+</ResponseField>
+
+<ResponseField name="commit_error" type="string">
+  Error message if committing the update fails
+</ResponseField>

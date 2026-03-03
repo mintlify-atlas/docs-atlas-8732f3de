@@ -1,0 +1,484 @@
+---
+title: Configuration
+description: Complete reference for Gitaly configuration options including storage, networking, and performance settings
+---
+
+Gitaly uses a TOML configuration file to define its behavior. This guide covers all available configuration options.
+
+## Configuration File
+
+The configuration file is typically located at:
+- Development: `config.toml` in your Gitaly directory
+- Production: `/home/git/gitlab/tmp/sockets/private/gitaly/config.toml`
+
+An example configuration file is provided at `config.toml.example` in the Gitaly repository.
+
+## Core Settings
+
+### Socket Path
+
+<ParamField path="socket_path" type="string" required>
+  Unix socket path for Gitaly to listen on.
+  
+  ```toml
+  socket_path = "/home/git/gitlab/tmp/sockets/private/gitaly.socket"
+  ```
+</ParamField>
+
+### Binary Directory
+
+<ParamField path="bin_dir" type="string" required>
+  The directory where Gitaly's executables are stored.
+  
+  ```toml
+  bin_dir = "/home/git/gitaly/_build/bin"
+  ```
+</ParamField>
+
+### Runtime Directory
+
+<ParamField path="runtime_dir" type="string">
+  The directory where Gitaly can create all files required to properly operate at runtime. If not set, Gitaly will create a directory in the global temporary directory. This directory must exist.
+  
+  ```toml
+  runtime_dir = "/home/git/gitaly/run"
+  ```
+</ParamField>
+
+## Network Configuration
+
+### TCP Listening
+
+<ParamField path="listen_addr" type="string">
+  Listen on a TCP socket. **Warning**: This is insecure without TLS (no authentication).
+  
+  ```toml
+  listen_addr = "localhost:9999"
+  ```
+</ParamField>
+
+<ParamField path="tls_listen_addr" type="string">
+  Listen on a TCP socket with TLS encryption.
+  
+  ```toml
+  tls_listen_addr = "localhost:8888"
+  ```
+</ParamField>
+
+### Prometheus Metrics
+
+<ParamField path="prometheus_listen_addr" type="string">
+  Export metrics via Prometheus on this address.
+  
+  ```toml
+  prometheus_listen_addr = "localhost:9236"
+  ```
+</ParamField>
+
+### Internal Sockets
+
+<ParamField path="internal_socket_dir" type="string">
+  Configure where Gitaly creates sockets for internal connections. If unset, Gitaly creates a randomly named temp directory each time it boots. Non-Gitaly clients should never connect to these sockets.
+  
+  ```toml
+  internal_socket_dir = "/home/git/gitlab/tmp/sockets/private/internal"
+  ```
+</ParamField>
+
+## Git Configuration
+
+<ParamField path="git" type="object">
+  Git-specific settings.
+  
+  ```toml
+  [git]
+  bin_path = "/usr/bin/git"
+  catfile_cache_size = 100
+  ```
+</ParamField>
+
+<ParamField path="git.bin_path" type="string">
+  Path to the Git binary.
+</ParamField>
+
+<ParamField path="git.catfile_cache_size" type="integer" default="100">
+  Number of cached git-cat-file processes.
+</ParamField>
+
+### Git Configuration Values
+
+You can set Git configuration values that apply to all Git operations:
+
+```toml
+[[git.config]]
+key = "fetch.fsckObjects"
+value = "true"
+```
+
+## Storage Configuration
+
+See the [Storage Configuration](/setup/storage) page for detailed information about configuring Git repository storage.
+
+## Logging Configuration
+
+<ParamField path="logging" type="object">
+  Configure Gitaly's logging behavior.
+  
+  ```toml
+  [logging]
+  dir = "/home/git/gitlab/log"
+  format = "json"
+  level = "info"
+  ```
+</ParamField>
+
+<ParamField path="logging.dir" type="string">
+  The directory where Gitaly stores extra log files.
+</ParamField>
+
+<ParamField path="logging.format" type="string" default="text">
+  Output format for logs. Options: `text` or `json`.
+</ParamField>
+
+<ParamField path="logging.level" type="string" default="info">
+  Log level to filter entries. One of: `debug`, `info`, `warn`, `error`, `fatal`, `panic` (in order of severity).
+</ParamField>
+
+### Sentry Integration
+
+<ParamField path="logging.sentry_dsn" type="string">
+  Report exceptions from the Go server to Sentry.
+  
+  ```toml
+  sentry_dsn = "https://<key>:<secret>@sentry.io/<project>"
+  ```
+</ParamField>
+
+<ParamField path="logging.ruby_sentry_dsn" type="string">
+  Report exceptions from gitaly-ruby to Sentry.
+  
+  ```toml
+  ruby_sentry_dsn = "https://<key>:<secret>@sentry.io/<project>"
+  ```
+</ParamField>
+
+## Prometheus Configuration
+
+<ParamField path="prometheus" type="object">
+  Configure Prometheus metrics collection.
+  
+  ```toml
+  [prometheus]
+  grpc_latency_buckets = [0.001, 0.005, 0.025, 0.1, 0.5, 1.0, 10.0, 30.0, 60.0, 300.0, 1500.0]
+  ```
+</ParamField>
+
+<ParamField path="prometheus.grpc_latency_buckets" type="array">
+  Histogram buckets for recording GRPC method call latencies (in seconds).
+</ParamField>
+
+## Gitaly-Ruby Configuration
+
+<ParamField path="gitaly-ruby" type="object">
+  Configuration for the Ruby helper process.
+  
+  ```toml
+  [gitaly-ruby]
+  dir = "/home/git/gitaly/ruby"
+  num_workers = 2
+  max_rss = 200000000
+  graceful_restart_timeout = "10m"
+  restart_delay = "5m"
+  ```
+</ParamField>
+
+<ParamField path="gitaly-ruby.dir" type="string" required>
+  The directory where gitaly-ruby is installed.
+</ParamField>
+
+<ParamField path="gitaly-ruby.num_workers" type="integer" default="2">
+  Number of gitaly-ruby worker processes.
+</ParamField>
+
+<ParamField path="gitaly-ruby.max_rss" type="integer" default="200000000">
+  Gitaly-ruby resident set size (RSS) that triggers a memory restart (in bytes).
+</ParamField>
+
+<ParamField path="gitaly-ruby.graceful_restart_timeout" type="duration" default="10m">
+  Grace period before a gitaly-ruby process is forcibly terminated after exceeding max_rss.
+</ParamField>
+
+<ParamField path="gitaly-ruby.restart_delay" type="duration" default="5m">
+  Time that gitaly-ruby memory must remain high before a restart.
+</ParamField>
+
+<ParamField path="gitaly-ruby.rugged_git_config_search_path" type="string">
+  Search path for system gitconfig file (e.g., `/etc`, `/opt/gitlab/embedded/etc`). Only affects RPCs that use Rugged.
+</ParamField>
+
+## GitLab Shell Configuration
+
+<ParamField path="gitlab-shell" type="object">
+  GitLab Shell integration settings.
+  
+  ```toml
+  [gitlab-shell]
+  dir = "/home/git/gitlab-shell"
+  ```
+</ParamField>
+
+<ParamField path="gitlab-shell.dir" type="string" required>
+  The directory where gitlab-shell is installed.
+</ParamField>
+
+## Hooks Configuration
+
+<ParamField path="hooks" type="object">
+  Custom Git hooks configuration.
+  
+  ```toml
+  [hooks]
+  custom_hooks_dir = "/home/git/custom_hooks"
+  ```
+</ParamField>
+
+<ParamField path="hooks.custom_hooks_dir" type="string">
+  Directory containing custom Git hooks to be executed.
+</ParamField>
+
+## GitLab Integration
+
+<ParamField path="gitlab" type="object">
+  GitLab Rails application integration settings.
+  
+  ```toml
+  [gitlab]
+  secret_file = "/home/git/gitlab-shell/.gitlab_shell_secret"
+  url = "http+unix://%2Fhome%2Fgit%2Fgitlab%2Ftmp%2Fsockets%2Fgitlab-workhorse.socket"
+  relative_url_root = '/'
+  ```
+</ParamField>
+
+<ParamField path="gitlab.secret_file" type="string" required>
+  Path to the shared secret file for authenticating with GitLab.
+</ParamField>
+
+<ParamField path="gitlab.url" type="string" required>
+  URL of the GitLab Rails application.
+</ParamField>
+
+<ParamField path="gitlab.relative_url_root" type="string">
+  Only needed if a UNIX socket is used in `url` and GitLab is configured to use a relative path (e.g., `/gitlab`).
+</ParamField>
+
+### GitLab HTTP Settings
+
+<ParamField path="gitlab.http-settings" type="object">
+  HTTP client configuration for GitLab API requests.
+  
+  ```toml
+  [gitlab.http-settings]
+  read_timeout = 300
+  self_signed_cert = false
+  ```
+</ParamField>
+
+<ParamField path="gitlab.http-settings.read_timeout" type="integer" default="300">
+  HTTP read timeout in seconds.
+</ParamField>
+
+<ParamField path="gitlab.http-settings.user" type="string">
+  HTTP basic auth username.
+</ParamField>
+
+<ParamField path="gitlab.http-settings.password" type="string">
+  HTTP basic auth password.
+</ParamField>
+
+<ParamField path="gitlab.http-settings.ca_file" type="string">
+  Path to CA certificate file.
+</ParamField>
+
+<ParamField path="gitlab.http-settings.ca_path" type="string">
+  Path to CA certificates directory.
+</ParamField>
+
+<ParamField path="gitlab.http-settings.self_signed_cert" type="boolean" default="false">
+  Allow self-signed certificates.
+</ParamField>
+
+## Concurrency Configuration
+
+Control the concurrency of RPC endpoints:
+
+```toml
+[[concurrency]]
+rpc = "/gitaly.RepositoryService/GarbageCollect"
+max_per_repo = 1
+max_queue_wait = "1m"
+max_queue_size = 10
+```
+
+<ParamField path="concurrency.rpc" type="string">
+  The full RPC method name.
+</ParamField>
+
+<ParamField path="concurrency.max_per_repo" type="integer">
+  Maximum number of concurrent calls per repository.
+</ParamField>
+
+<ParamField path="concurrency.max_queue_wait" type="duration">
+  Maximum time a request can wait in the queue.
+</ParamField>
+
+<ParamField path="concurrency.max_queue_size" type="integer">
+  Maximum number of requests that can be queued.
+</ParamField>
+
+## Rate Limiting
+
+Configure rate limiting for specific RPCs:
+
+```toml
+[[rate_limiting]]
+rpc = "/gitaly.SmartHTTPService/PostUploadPackWithSidechannel"
+interval = "1m"
+burst = 5
+```
+
+<ParamField path="rate_limiting.rpc" type="string">
+  The full RPC method name to rate limit.
+</ParamField>
+
+<ParamField path="rate_limiting.interval" type="duration">
+  Time window for rate limiting.
+</ParamField>
+
+<ParamField path="rate_limiting.burst" type="integer">
+  Maximum number of requests allowed in the interval.
+</ParamField>
+
+## Daily Maintenance
+
+Schedule daily maintenance tasks to optimize repositories:
+
+```toml
+[daily_maintenance]
+start_hour = 23
+start_minute = 30
+duration = "45m"
+storages = ["default"]
+disabled = false
+```
+
+<ParamField path="daily_maintenance.start_hour" type="integer">
+  Hour to start daily maintenance (0-23).
+</ParamField>
+
+<ParamField path="daily_maintenance.start_minute" type="integer">
+  Minute to start daily maintenance (0-59).
+</ParamField>
+
+<ParamField path="daily_maintenance.duration" type="duration">
+  How long maintenance window lasts.
+</ParamField>
+
+<ParamField path="daily_maintenance.storages" type="array">
+  List of storage names to run maintenance on.
+</ParamField>
+
+<ParamField path="daily_maintenance.disabled" type="boolean" default="false">
+  Disable daily maintenance.
+</ParamField>
+
+## Cgroups Configuration
+
+Control resource usage with cgroups:
+
+```toml
+[cgroups]
+count = 10
+mountpoint = "/sys/fs/cgroup"
+hierarchy_root = "gitaly"
+
+[cgroups.memory]
+enabled = true
+limit = 1048576
+
+[cgroups.cpu]
+enabled = true
+shares = 512
+```
+
+<ParamField path="cgroups.count" type="integer">
+  Number of cgroup partitions to create.
+</ParamField>
+
+<ParamField path="cgroups.mountpoint" type="string" default="/sys/fs/cgroup">
+  Cgroup mount point.
+</ParamField>
+
+<ParamField path="cgroups.hierarchy_root" type="string" default="gitaly">
+  Root hierarchy for Gitaly cgroups.
+</ParamField>
+
+<ParamField path="cgroups.memory.enabled" type="boolean" default="false">
+  Enable memory limits.
+</ParamField>
+
+<ParamField path="cgroups.memory.limit" type="integer">
+  Memory limit in bytes.
+</ParamField>
+
+<ParamField path="cgroups.cpu.enabled" type="boolean" default="false">
+  Enable CPU limits.
+</ParamField>
+
+<ParamField path="cgroups.cpu.shares" type="integer">
+  CPU shares (relative weight).
+</ParamField>
+
+## Complete Example
+
+Here's a complete example configuration file:
+
+```toml
+socket_path = "/home/git/gitlab/tmp/sockets/private/gitaly.socket"
+bin_dir = "/home/git/gitaly/_build/bin"
+
+[git]
+bin_path = "/usr/bin/git"
+catfile_cache_size = 100
+
+[[storage]]
+name = "default"
+path = "/home/git/repositories"
+
+[logging]
+dir = "/home/git/gitlab/log"
+format = "json"
+level = "info"
+
+[gitaly-ruby]
+dir = "/home/git/gitaly/ruby"
+num_workers = 2
+
+[gitlab-shell]
+dir = "/home/git/gitlab-shell"
+
+[hooks]
+custom_hooks_dir = "/home/git/custom_hooks"
+
+[gitlab]
+secret_file = "/home/git/gitlab-shell/.gitlab_shell_secret"
+url = "http+unix://%2Fhome%2Fgit%2Fgitlab%2Ftmp%2Fsockets%2Fgitlab-workhorse.socket"
+
+[gitlab.http-settings]
+self_signed_cert = false
+```
+
+## Further Reading
+
+<Card title="Official Documentation" icon="book" href="https://docs.gitlab.com/ee/administration/gitaly/reference">
+  Complete administration and reference guide in the GitLab documentation
+</Card>

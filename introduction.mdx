@@ -1,0 +1,103 @@
+---
+title: Introduction to Gitaly
+description: A Git RPC service for handling all Git operations in GitLab with fault-tolerant horizontal scaling
+---
+
+# Introduction to Gitaly
+
+Gitaly is a Git [RPC](https://en.wikipedia.org/wiki/Remote_procedure_call) service for handling all the git calls made by GitLab. It provides fault-tolerant horizontal scaling of Git storage in GitLab, particularly on [gitlab.com](https://gitlab.com).
+
+<Note>
+  Gitaly is already included in your GitLab installation. Most users won't need to install Gitaly separately.
+</Note>
+
+## What is Gitaly?
+
+Gitaly is a layer that brings horizontal scaling and higher availability to massively scaled Git operations through optimizations in:
+
+- **Disk locality** - Moving Git operations close to storage
+- **Caching** - Caching results of intensive operations like `git pack-objects`
+- **Coordination** - Managing operations between multiple nodes
+- **Cluster synchronization** - Keeping repositories in sync across nodes
+- **Sharding** - Distributing repositories across storage
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="RPC-Based Architecture" icon="network-wired">
+    Uses gRPC for high-performance remote procedure calls, exposing high-level Git operations instead of low-level lookups
+  </Card>
+  
+  <Card title="Horizontal Scaling" icon="arrows-left-right">
+    Scales Git storage horizontally by eliminating NFS bottlenecks and moving Git operations close to disk
+  </Card>
+  
+  <Card title="High Availability" icon="shield-check">
+    Built-in HA solution with Praefect for asynchronous replication and automatic failover
+  </Card>
+  
+  <Card title="Performance Optimization" icon="gauge-high">
+    Centralized monitoring, intelligent caching, and reduced filesystem latency for Git operations
+  </Card>
+</CardGroup>
+
+## Why Gitaly?
+
+Git's architectural characteristics make horizontal scaling challenging:
+
+- **Stateful, ACID transactions** - Database-like workload with memory/CPU/disk IO requirements
+- **Process atomic transactions** - One commit coordinated by one Git process
+- **Storage channel speeds** - Assumes low latency, high bandwidth storage access
+- **Burst resource needs** - High burst CPU, memory, and storage utilization based on content size
+
+These characteristics make remote file systems (like NFS) unreliable for Git operations at scale. Gitaly solves this by:
+
+1. Providing one central place to monitor operations
+2. Implementing performance improvements through caching
+3. Moving Git operations from the app to the file/git server via RPC
+4. Enabling distributed storage and read operations
+
+<Info>
+  As of GitLab 11.5, almost all application code accesses Git repositories through Gitaly instead of direct disk access. GitLab.com production no longer uses NFS mounts for Git repositories.
+</Info>
+
+## Project Goals
+
+Gitaly focuses on two main areas:
+
+1. **Migrate from NFS to RPC** - Replace repository access via NFS with gitaly-proto, GitLab's Git RPC protocol
+2. **Evolve infrastructure** - Move from large Gitaly servers managed as "pets" to smaller servers that are "cattle"
+
+## Gitaly Clients
+
+Several GitLab components act as Gitaly clients:
+
+- **gitlab-rails** - The main GitLab Rails application
+- **gitlab-shell** - For `git clone`, `git push` via SSH
+- **gitlab-workhorse** - For `git clone` via HTTPS and serving raw Git data
+- **gitaly-ssh** - For internal Git data transfers between Gitaly servers
+- **gitaly-ruby** - For RPCs that interact with multiple repositories
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="diagram-project" href="/architecture">
+    Learn about Gitaly's architecture, design decisions, and how it fits into GitLab
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get Gitaly up and running with configuration examples and setup instructions
+  </Card>
+  
+  <Card title="Configuration Reference" icon="gear" href="/configuration">
+    Detailed configuration options for Gitaly and Praefect
+  </Card>
+  
+  <Card title="High Availability" icon="server" href="/high-availability">
+    Set up Praefect for asynchronous replication and failover
+  </Card>
+</CardGroup>
+
+## Name Origin
+
+Gitaly is a tribute to git and the town of [Aly](https://en.wikipedia.org/wiki/Aly). Where the town of Aly has zero inhabitants most of the year, Gitaly aims to reduce the number of disk operations to zero for most actions. It also sounds like Italy, the capital of which is [the destination of all roads](https://en.wikipedia.org/wiki/All_roads_lead_to_Rome) - all git actions in GitLab end up in Gitaly.

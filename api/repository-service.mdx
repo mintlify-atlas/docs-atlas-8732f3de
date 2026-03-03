@@ -1,0 +1,794 @@
+---
+title: "RepositoryService"
+description: "RPCs for repository-level operations including creation, maintenance, and inspection"
+---
+
+The RepositoryService provides RPCs for managing Git repositories at the repository level. This includes operations for creating, optimizing, backing up, and inspecting repositories.
+
+## RepositoryExists
+
+Checks if a repository exists at the specified path.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check for existence
+</ParamField>
+
+### Response
+
+<ResponseField name="exists" type="bool">
+  True if the repository exists, false otherwise
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  }
+}
+```
+
+## RepositorySize
+
+Returns the size of the repository in kilobytes.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to measure
+</ParamField>
+
+### Response
+
+<ResponseField name="size" type="int64">
+  Repository size in kilobytes
+</ResponseField>
+
+## CreateRepository
+
+Creates a new empty repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to create
+</ParamField>
+
+<ParamField path="default_branch" type="bytes">
+  Branch name to set as the default branch. This will be treated as the branch name and not a fully qualified reference.
+</ParamField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "default_branch": "main"
+}
+```
+
+## OptimizeRepository
+
+Performs all maintenance tasks to keep the repository in an efficient state. This includes cleaning up stale data, repacking objects, updating auxiliary caches like commit-graphs, and packing references.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to optimize
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  }
+}
+```
+
+## PruneUnreachableObjects
+
+Prunes all objects which aren't reachable from the repository's current set of references. Objects must not have been accessed or modified in the last 30 minutes.
+
+<Info>
+You must call OptimizeRepository first to explode unreachable objects into loose objects, wait 30 minutes, then call PruneUnreachableObjects.
+</Info>
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to prune
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## FetchRemote
+
+Fetches references from a remote repository into the local repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  Target repository to fetch into
+</ParamField>
+
+<ParamField path="remote_params" type="Remote" required>
+  Remote repository configuration
+</ParamField>
+
+<ParamField path="force" type="bool">
+  Force-update references if they have diverged
+</ParamField>
+
+<ParamField path="no_tags" type="bool">
+  Skip fetching tags
+</ParamField>
+
+<ParamField path="timeout" type="int32">
+  Timeout in seconds for the fetch operation
+</ParamField>
+
+<ParamField path="no_prune" type="bool">
+  Don't prune remote references that no longer exist
+</ParamField>
+
+<ParamField path="check_tags_changed" type="bool">
+  Check whether any tags were modified
+</ParamField>
+
+### Response
+
+<ResponseField name="tags_changed" type="bool">
+  True if tags were changed or cannot be determined. Only set if check_tags_changed was true.
+</ResponseField>
+
+## FetchSourceBranch
+
+Fetches a branch from a second (potentially remote) repository into the given repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  Target repository to fetch into
+</ParamField>
+
+<ParamField path="source_repository" type="Repository" required>
+  Source repository to fetch from
+</ParamField>
+
+<ParamField path="source_branch" type="bytes" required>
+  Name of the branch in the source repository
+</ParamField>
+
+<ParamField path="target_ref" type="bytes" required>
+  Name of the reference to create in the target repository
+</ParamField>
+
+### Response
+
+<ResponseField name="result" type="bool">
+  True if the source branch was successfully fetched, false if resolving or fetching failed
+</ResponseField>
+
+## GetArchive
+
+Generates an archive (tar, tar.gz, tar.bz2, or zip) from the repository at a specific commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to archive
+</ParamField>
+
+<ParamField path="commit_id" type="string" required>
+  The commit to create the archive from
+</ParamField>
+
+<ParamField path="prefix" type="string">
+  Prefix to add to all paths in the archive
+</ParamField>
+
+<ParamField path="format" type="Format" required>
+  Archive format: ZIP, TAR, TAR_GZ, or TAR_BZ2
+</ParamField>
+
+<ParamField path="path" type="bytes">
+  Limit archive to a specific subdirectory
+</ParamField>
+
+<ParamField path="exclude" type="bytes[]">
+  Patterns to exclude from the archive
+</ParamField>
+
+<ParamField path="elide_path" type="bool">
+  If true and path refers to a subdirectory, elide that subdirectory from archive entries
+</ParamField>
+
+<ParamField path="include_lfs_blobs" type="bool">
+  Include LFS blob content in the archive
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of archive data
+</ResponseField>
+
+## CreateBundle
+
+Creates a bundle from all refs in the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to bundle
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of bundle data
+</ResponseField>
+
+## CreateBundleFromRefList
+
+Creates a bundle from a stream of ref patterns. Returns FailedPrecondition error if the bundle would be empty.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository to bundle (first message only)
+</ParamField>
+
+<ParamField path="patterns" type="bytes[]">
+  Patterns in the format accepted by git-rev-list(1). Patterns which don't match any reference will be silently ignored.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of bundle data
+</ResponseField>
+
+## FetchBundle
+
+Fetches references from a bundle into the local repository. Refs will be mirrored with the refspec "+refs/*:refs/*" and refs that do not exist in the bundle will be removed.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  Repository to fetch into (first message only)
+</ParamField>
+
+<ParamField path="data" type="bytes">
+  Bundle file stream data
+</ParamField>
+
+<ParamField path="update_head" type="bool">
+  Update HEAD if there is a HEAD reference listed in the bundle
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## CreateRepositoryFromBundle
+
+Creates a new repository from a bundle file.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository to create (first message only)
+</ParamField>
+
+<ParamField path="data" type="bytes">
+  Bundle file stream data
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## CreateFork
+
+Creates a fork of a repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to create as a fork
+</ParamField>
+
+<ParamField path="source_repository" type="Repository" required>
+  The repository to fork from
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## CreateRepositoryFromURL
+
+Creates a repository by cloning from a URL.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to create
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  URL to clone from
+</ParamField>
+
+<ParamField path="http_host" type="string">
+  Hostname of the remote repository. Use this when the URL hostname has been resolved to an IP address to prevent DNS rebinding.
+</ParamField>
+
+<ParamField path="http_authorization_header" type="string">
+  HTTP authorization header for authentication
+</ParamField>
+
+<ParamField path="mirror" type="bool">
+  If true, creates a complete mirror clone which maps all remote references. If false (default), creates a bare clone with only branches and tags.
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## GetConfig
+
+Reads the target repository's gitconfig and streams its contents. Returns NotFound error if no gitconfig was found.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to read config from
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of gitconfig contents
+</ResponseField>
+
+## ApplyGitattributes
+
+Applies gitattributes from a specific revision to the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to apply gitattributes to
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision containing the .gitattributes file
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## Fsck
+
+Runs git fsck to check the repository for corruption.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check
+</ParamField>
+
+### Response
+
+<ResponseField name="error" type="bytes">
+  Error message if fsck found issues, empty if repository is healthy
+</ResponseField>
+
+## WriteRef
+
+Writes a reference to point to a specific revision.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to write the ref in
+</ParamField>
+
+<ParamField path="ref" type="bytes" required>
+  The reference name to write
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision the ref should point to
+</ParamField>
+
+<ParamField path="old_revision" type="bytes">
+  Expected old revision for atomic updates
+</ParamField>
+
+<ParamField path="force" type="bool">
+  Force update even if it's not a fast-forward
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## FindMergeBase
+
+Finds the merge base commit between multiple revisions.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revisions" type="bytes[]" required>
+  The revisions to find the merge base for (supports more than 2 revisions)
+</ParamField>
+
+### Response
+
+<ResponseField name="base" type="string">
+  The merge base commit ID, empty if no merge base found
+</ResponseField>
+
+## HasLocalBranches
+
+Checks if the repository has any local branches.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check
+</ParamField>
+
+### Response
+
+<ResponseField name="value" type="bool">
+  True if the repository has local branches
+</ResponseField>
+
+## FindLicense
+
+Detects the license of the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to analyze
+</ParamField>
+
+### Response
+
+<ResponseField name="license_short_name" type="string">
+  Short name of the detected license (e.g., "MIT", "Apache-2.0")
+</ResponseField>
+
+## GetInfoAttributes
+
+Retrieves the contents of the repository's info/attributes file.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to read from
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="attributes" type="bytes">
+  Chunk of attributes file content
+</ResponseField>
+
+## CalculateChecksum
+
+Calculates a checksum of the repository's content.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to checksum
+</ParamField>
+
+### Response
+
+<ResponseField name="checksum" type="string">
+  The calculated checksum
+</ResponseField>
+
+## GetSnapshot
+
+Creates a snapshot of the repository as a tar archive.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to snapshot
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of snapshot data
+</ResponseField>
+
+## CreateRepositoryFromSnapshot
+
+Creates a repository from a remote snapshot URL.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to create
+</ParamField>
+
+<ParamField path="http_url" type="string" required>
+  URL of the snapshot
+</ParamField>
+
+<ParamField path="http_auth" type="string">
+  Authentication credentials
+</ParamField>
+
+<ParamField path="http_host" type="string">
+  Hostname of the remote snapshot. Use this when the URL hostname has been resolved to an IP address to prevent DNS rebinding.
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## GetRawChanges
+
+Returns the raw changes between two revisions.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to analyze
+</ParamField>
+
+<ParamField path="from_revision" type="string" required>
+  Starting revision
+</ParamField>
+
+<ParamField path="to_revision" type="string" required>
+  Ending revision
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="raw_changes" type="RawChange[]">
+  Array of raw changes between revisions
+</ResponseField>
+
+<ResponseField name="raw_changes[].blob_id" type="string">
+  Object ID of the blob
+</ResponseField>
+
+<ResponseField name="raw_changes[].size" type="int64">
+  Size of the blob
+</ResponseField>
+
+<ResponseField name="raw_changes[].operation" type="Operation">
+  Type of operation: ADDED, COPIED, DELETED, MODIFIED, RENAMED, TYPE_CHANGED
+</ResponseField>
+
+<ResponseField name="raw_changes[].old_mode" type="int32">
+  Old file mode
+</ResponseField>
+
+<ResponseField name="raw_changes[].new_mode" type="int32">
+  New file mode
+</ResponseField>
+
+<ResponseField name="raw_changes[].new_path_bytes" type="bytes">
+  New path of the file
+</ResponseField>
+
+<ResponseField name="raw_changes[].old_path_bytes" type="bytes">
+  Old path of the file
+</ResponseField>
+
+## SearchFilesByName
+
+Searches for files by name pattern.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="query" type="string" required>
+  Search query pattern
+</ParamField>
+
+<ParamField path="ref" type="bytes" required>
+  Reference to search at
+</ParamField>
+
+<ParamField path="filter" type="string">
+  Regular expression to filter results (max 1000 bytes)
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="files" type="bytes[]">
+  Array of matching file paths
+</ResponseField>
+
+## SearchFilesByContent
+
+Searches for files by content pattern.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="query" type="string" required>
+  Search query pattern
+</ParamField>
+
+<ParamField path="ref" type="bytes" required>
+  Reference to search at
+</ParamField>
+
+<ParamField path="chunked_response" type="bool">
+  Enable chunked response mode
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="matches" type="bytes[]">
+  Array of matching content
+</ResponseField>
+
+<ResponseField name="match_data" type="bytes">
+  Raw match data in chunked mode
+</ResponseField>
+
+<ResponseField name="end_of_match" type="bool">
+  Indicates end of a match in chunked mode
+</ResponseField>
+
+## RestoreCustomHooks
+
+Restores custom hooks to the repository from a tar archive.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository to restore hooks to (first message only)
+</ParamField>
+
+<ParamField path="data" type="bytes">
+  Tar archive data containing hooks
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## BackupCustomHooks
+
+Backs up custom hooks from the repository as a tar archive.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to backup hooks from
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of tar archive data
+</ResponseField>
+
+## GetObjectDirectorySize
+
+Returns the size of the repository's object directory in kilobytes.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to measure
+</ParamField>
+
+### Response
+
+<ResponseField name="size" type="int64">
+  Object directory size in kilobytes
+</ResponseField>
+
+## RemoveRepository
+
+Removes a repository by moving it to a temporary location before deletion.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to remove
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## RenameRepository
+
+Renames a repository to a new relative path.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to rename
+</ParamField>
+
+<ParamField path="relative_path" type="string" required>
+  New relative path for the repository
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## ReplicateRepository
+
+Replicates a repository from a source.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The target repository
+</ParamField>
+
+<ParamField path="source" type="Repository" required>
+  The source repository to replicate from
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## SetFullPath
+
+Writes the "gitlab.fullpath" configuration into the repository's gitconfig for debugging purposes.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to configure
+</ParamField>
+
+<ParamField path="path" type="string" required>
+  The full path to write into the gitlab.fullpath config key
+</ParamField>
+
+### Response
+
+Empty response on success.

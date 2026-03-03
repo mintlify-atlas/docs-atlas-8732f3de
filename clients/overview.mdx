@@ -1,0 +1,144 @@
+---
+title: Client Libraries Overview
+description: Overview of Gitaly client libraries for Go and Ruby, including connection patterns, authentication, and available implementations
+---
+
+Gitaly provides official client libraries for connecting to Gitaly servers via gRPC. These clients handle connection management, authentication, and provide high-level APIs for Git operations.
+
+## Available Clients
+
+Gitaly supports client libraries in multiple languages:
+
+<CardGroup cols={2}>
+  <Card title="Go Client" icon="golang" href="/clients/go-client">
+    Official Go client with connection pooling and sidechannel support
+  </Card>
+  <Card title="Ruby Client" icon="gem" href="/clients/ruby-client">
+    Ruby client used by GitLab Rails and gitaly-ruby
+  </Card>
+</CardGroup>
+
+## Client Usage in GitLab
+
+As of Q4 2018, the following GitLab components act as Gitaly clients:
+
+- **[gitlab-rails](https://gitlab.com/gitlab-org/gitlab-ce/blob/master/lib/gitlab/gitaly_client.rb)**: The main GitLab Rails application
+- **[gitlab-shell](https://gitlab.com/gitlab-org/gitlab-shell/tree/master)**: Handles `git clone`, `git push`, etc. via SSH
+- **[gitlab-workhorse](https://gitlab.com/gitlab-org/gitlab-workhorse/blob/master/internal/gitaly/gitaly.go)**: Handles `git clone` via HTTPS and serves raw Git data
+- **[gitaly-ssh](https://gitlab.com/gitlab-org/gitaly/tree/master/cmd/gitaly-ssh)**: Manages internal Git data transfers between Gitaly servers
+- **[gitaly-ruby](https://gitlab.com/gitlab-org/gitaly/blob/master/ruby/lib/gitlab/git/gitaly_remote_repository.rb)**: Handles RPCs that interact with multiple repositories (e.g., merging branches)
+
+## Connection Formats
+
+Gitaly clients support multiple connection formats:
+
+### Unix Socket
+```
+unix:/path/to/gitaly.socket
+```
+Recommended for local connections. Provides the best performance and security.
+
+### TCP (Insecure)
+```
+tcp://hostname:port
+```
+Unencrypted TCP connection. Only use in trusted networks.
+
+### TLS
+```
+tls://hostname:port
+```
+Encrypted TCP connection using TLS. Required for connections over untrusted networks.
+
+## Authentication
+
+Gitaly uses token-based authentication to secure RPC calls. Authentication is handled differently by each client:
+
+### Token-Based (Go)
+
+The Go client uses `gitalyauth.RPCCredentialsV2` to inject authentication tokens:
+
+```go
+import gitalyauth "gitlab.com/gitlab-org/gitaly/v14/auth"
+
+opts := []grpc.DialOption{
+    grpc.WithPerRPCCredentials(gitalyauth.RPCCredentialsV2(token)),
+}
+```
+
+### Bearer Token (Ruby)
+
+The Ruby client generates time-based bearer tokens using HMAC:
+
+```ruby
+issued_at = Time.now.to_i.to_s
+hmac = OpenSSL::HMAC.hexdigest(OpenSSL::Digest::SHA256.new, shared_secret, issued_at)
+token = "v2.#{hmac}.#{issued_at}"
+
+metadata = {
+  'authorization' => "Bearer #{token}",
+  'client_name' => 'your-client'
+}
+```
+
+## Connection Pooling
+
+Both client libraries support connection pooling to reuse established connections:
+
+**Go**: The `Pool` type manages connections by address and token  
+**Ruby**: Uses gRPC's built-in connection management
+
+Connections are automatically reused for the same address and authentication token combination.
+
+## Common Features
+
+### Health Checks
+
+Clients can verify server health using gRPC health checks:
+
+```go
+// Go
+import healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+client := healthpb.NewHealthClient(conn)
+resp, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
+```
+
+### Request Metadata
+
+Clients inject metadata into requests:
+
+- **Authorization**: Bearer tokens for authentication
+- **Client Name**: Identifies the calling client
+- **Correlation ID**: For request tracing (handled by interceptors)
+- **Distributed Tracing**: OpenTracing context propagation
+
+### Keepalives
+
+Clients are configured to send keepalive pings to maintain long-lived connections and detect server failures quickly.
+
+## Sidechannel Support
+
+For high-throughput Git operations, Gitaly supports sidechannels - a mechanism for efficient binary data transfer outside of gRPC message framing.
+
+**Supported Operations:**
+- `SSHUploadPackWithSidechannel` (git fetch)
+- Other streaming Git operations
+
+**Benefits:**
+- Lower overhead than gRPC message streaming
+- Better performance for large data transfers
+- Direct byte stream access
+
+See the [Go Client documentation](/clients/go-client) for sidechannel usage examples.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Go Client Setup" icon="golang" href="/clients/go-client">
+    Learn how to use the Go client library
+  </Card>
+  <Card title="Ruby Client Setup" icon="gem" href="/clients/ruby-client">
+    Learn how to use the Ruby client library
+  </Card>
+</CardGroup>

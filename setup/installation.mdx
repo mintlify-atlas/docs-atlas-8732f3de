@@ -1,0 +1,144 @@
+---
+title: Installation
+description: Learn how to install Gitaly and its dependencies including Go, Ruby, and Git
+---
+
+Gitaly is already included in your GitLab installation. However, if you need to install Gitaly separately for development or custom deployments, follow these instructions.
+
+## Prerequisites
+
+Before installing Gitaly, ensure you have the required dependencies:
+
+- **Go**: Version 1.16 or 1.17
+- **Ruby**: Version 2.7
+- **Git**: Version 2.33.0 or newer
+- **Make**: For building from source
+
+## Installation Methods
+
+### Using Pre-built Binaries
+
+Most users won't install Gitaly on its own. It is already included in [your GitLab installation](https://about.gitlab.com/install/).
+
+### Building from Source
+
+To build and install Gitaly from source:
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Gitaly repository to your local machine:
+    
+    ```bash
+    git clone https://gitlab.com/gitlab-org/gitaly.git
+    cd gitaly
+    ```
+  </Step>
+
+  <Step title="Build Gitaly">
+    Run `make` to download and compile Ruby dependencies and compile the Gitaly Go executable:
+    
+    ```bash
+    make
+    ```
+    
+    This will:
+    - Install Ruby dependencies
+    - Compile all Gitaly executables
+    - Place binaries in `./_build/bin` directory
+  </Step>
+
+  <Step title="Install binaries">
+    Install Gitaly binaries to the target directory:
+    
+    ```bash
+    make install
+    ```
+    
+    By default, binaries are installed to `/usr/local/bin`. You can customize the installation directory using the `PREFIX` and `DESTDIR` variables:
+    
+    ```bash
+    make install PREFIX=/opt/gitaly
+    ```
+  </Step>
+
+  <Step title="Install bundled Git (optional)">
+    Gitaly can use a bundled version of Git with specific patches:
+    
+    ```bash
+    make build-bundled-git
+    make install-bundled-git
+    ```
+    
+    The bundled Git version is v2.35.1.gl1 with GitLab-specific patches.
+  </Step>
+</Steps>
+
+## Build Options
+
+### Custom Build Configuration
+
+You can customize the build process by creating a `config.mak` file in Gitaly's root directory:
+
+```makefile
+# Example config.mak
+PREFIX = /usr/local
+GIT_PREFIX = /usr/local/git
+FIPS_MODE = 0
+```
+
+### Build Variables
+
+<ParamField path="PREFIX" type="string" default="/usr/local">
+  The prefix where Gitaly binaries will be installed. Binaries will end up in `${PREFIX}/bin`.
+</ParamField>
+
+<ParamField path="GIT_PREFIX" type="string" default="${GIT_DEFAULT_PREFIX}">
+  The prefix where Git will be installed when building bundled Git.
+</ParamField>
+
+<ParamField path="BUILD_TAGS" type="string">
+  Build tags to include when compiling. For example, to enable Jaeger tracing:
+  
+  ```bash
+  make BUILD_TAGS="tracer_static tracer_static_jaeger"
+  ```
+</ParamField>
+
+<ParamField path="FIPS_MODE" type="integer" default="0">
+  Set to `1` to enable FIPS mode with BoringCrypto.
+</ParamField>
+
+## Build Targets
+
+The Makefile provides several useful targets:
+
+- `make build` - Build Gitaly but do not install it
+- `make install` - Build and install Gitaly
+- `make test` - Execute both Go and Ruby tests
+- `make clean` - Remove all generated build artifacts
+- `make help` - Print help about available targets
+
+## Verification
+
+After installation, verify that Gitaly is correctly installed:
+
+```bash
+gitaly --version
+```
+
+You should see output similar to:
+
+```
+Gitaly, version 14.x.x
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/setup/configuration">
+    Configure Gitaly for your environment
+  </Card>
+  <Card title="Authentication" icon="lock" href="/setup/authentication">
+    Set up authentication tokens
+  </Card>
+</CardGroup>

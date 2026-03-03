@@ -1,0 +1,102 @@
+---
+title: ServerService
+description: Service for retrieving Gitaly server information and statistics
+---
+
+The ServerService provides methods for retrieving information about the Gitaly server, storage statistics, and clock synchronization status.
+
+## ServerInfo
+
+Retrieves information about the Gitaly server and its storage.
+
+### Request
+
+Empty request.
+
+### Response
+
+<ResponseField name="server_version" type="string">
+  The version of the Gitaly server
+</ResponseField>
+
+<ResponseField name="git_version" type="string">
+  The version of Git installed on the server
+</ResponseField>
+
+<ResponseField name="storage_statuses" type="StorageStatus[]">
+  Array of storage status information for each configured storage
+</ResponseField>
+
+#### StorageStatus
+
+<ResponseField name="storage_name" type="string">
+  The name of the storage
+</ResponseField>
+
+<ResponseField name="readable" type="bool">
+  Whether the storage is readable
+</ResponseField>
+
+<ResponseField name="writeable" type="bool">
+  Whether the storage is writeable
+</ResponseField>
+
+<ResponseField name="fs_type" type="string">
+  The filesystem type of the storage
+</ResponseField>
+
+<ResponseField name="filesystem_id" type="string">
+  The unique identifier of the filesystem
+</ResponseField>
+
+<ResponseField name="replication_factor" type="uint32">
+  The replication factor for the storage (used in Praefect setups)
+</ResponseField>
+
+## DiskStatistics
+
+Retrieves disk usage statistics for configured storage.
+
+### Request
+
+Empty request.
+
+### Response
+
+<ResponseField name="storage_statuses" type="StorageStatus[]">
+  Array of storage disk statistics
+</ResponseField>
+
+#### StorageStatus
+
+<ResponseField name="storage_name" type="string">
+  The name of the storage
+</ResponseField>
+
+<ResponseField name="available" type="int64">
+  Available disk space in bytes. When both available and used are 0, Gitaly was unable to determine storage stats.
+</ResponseField>
+
+<ResponseField name="used" type="int64">
+  Used disk space in bytes. When both available and used are 0, Gitaly was unable to determine storage stats.
+</ResponseField>
+
+## ClockSynced
+
+Checks if the machine clock is synchronized with an NTP server (within the specified drift threshold).
+
+### Request
+
+<ParamField path="ntp_host" type="string">
+  URL to the external NTP service for clock sync check. Defaults to ntp.pool.org if not specified.
+</ParamField>
+
+<ParamField path="drift_threshold_millis" type="int64">
+  Allowed drift from the NTP service in milliseconds
+</ParamField>
+
+### Response
+
+<ResponseField name="synced" type="bool">
+  True if the system clock has an acceptable drift compared to the NTP service, false otherwise
+</ResponseField>

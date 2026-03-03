@@ -1,0 +1,254 @@
+---
+title: Praefect gRPC Service API
+description: Complete reference for the PraefectInfoService gRPC API including repository replication, dataloss checking, and metadata management
+---
+
+The `PraefectInfoService` provides APIs for managing Gitaly cluster operations, including repository replication, data loss detection, and repository metadata.
+
+## Service Definition
+
+The PraefectInfoService is defined in `proto/praefect.proto` and provides cluster management capabilities for Praefect, Gitaly's replication and high availability solution.
+
+## RPC Methods
+
+### RepositoryReplicas
+
+Retrieves information about repository replicas across the cluster.
+
+**Request:** `RepositoryReplicasRequest`
+```protobuf
+message RepositoryReplicasRequest {
+  Repository repository = 1;
+}
+```
+
+**Response:** `RepositoryReplicasResponse`
+```protobuf
+message RepositoryReplicasResponse {
+  message RepositoryDetails {
+    Repository repository = 1;
+    string checksum = 2;
+  }
+
+  RepositoryDetails primary = 1;
+  repeated RepositoryDetails replicas = 2;
+}
+```
+
+### DatalossCheck
+
+Checks for unavailable repositories in the cluster. This is critical for identifying repositories that may have data loss or availability issues.
+
+**Request:** `DatalossCheckRequest`
+```protobuf
+message DatalossCheckRequest {
+  string virtual_storage = 1;
+  // Include repositories that are available but unavailable on some assigned storages
+  bool include_partially_replicated = 2;
+}
+```
+
+**Response:** `DatalossCheckResponse`
+```protobuf
+message DatalossCheckResponse {
+  message Repository {
+    message Storage {
+      string name = 1;              // Storage name
+      int64 behind_by = 2;          // Generations behind
+      bool assigned = 3;            // Is storage assigned
+      bool healthy = 4;             // Is storage healthy
+      bool valid_primary = 5;       // Can act as primary
+    }
+
+    string relative_path = 1;
+    repeated Storage storages = 2;
+    bool unavailable = 3;
+    string primary = 4;
+  }
+
+  repeated Repository repositories = 2;
+}
+```
+
+### SetAuthoritativeStorage
+
+Sets the authoritative storage for a repository on a virtual storage. This marks the current version on the authoritative storage as the latest, overwriting other versions.
+
+**Request:** `SetAuthoritativeStorageRequest`
+```protobuf
+message SetAuthoritativeStorageRequest {
+  string virtual_storage = 1;
+  string relative_path = 2;
+  string authoritative_storage = 3;
+}
+```
+
+**Response:** `SetAuthoritativeStorageResponse` (empty)
+
+**Usage:** Use this RPC when you need to resolve conflicts by designating one storage as authoritative.
+
+### MarkUnverified
+
+Marks replicas as unverified to trigger Praefect's metadata verifier. Unverified replicas are prioritized for verification.
+
+**Request:** `MarkUnverifiedRequest`
+```protobuf
+message MarkUnverifiedRequest {
+  message Storage {
+    string virtual_storage = 1;
+    string storage = 2;
+  }
+
+  oneof selector {
+    int64 repository_id = 1;      // Mark all replicas for a repository
+    string virtual_storage = 2;   // Mark all replicas in virtual storage
+    Storage storage = 3;          // Mark replicas on a single storage
+  }
+}
+```
+
+**Response:** `MarkUnverifiedResponse`
+```protobuf
+message MarkUnverifiedResponse {
+  int64 replicas_marked = 1;  // Number of replicas marked unverified
+}
+```
+
+### SetReplicationFactor
+
+Configures the desired replication factor for a repository. This assigns or unassigns storage nodes to meet the target replication level.
+
+**Request:** `SetReplicationFactorRequest`
+```protobuf
+message SetReplicationFactorRequest {
+  string virtual_storage = 1;
+  string relative_path = 2;
+  int32 replication_factor = 3;  // Must be >= 1
+}
+```
+
+**Response:** `SetReplicationFactorResponse`
+```protobuf
+message SetReplicationFactorResponse {
+  repeated string storages = 1;  // Storages assigned to host the repository
+}
+```
+
+**Important Notes:**
+- Replication factor must be >= 1
+- Cannot exceed the number of storage nodes in the virtual storage
+- The primary node is never unassigned (it must have a copy for writes)
+- The primary is the first storage assigned when setting replication factor
+- Assignments of unconfigured storages are ignored
+
+### GetRepositoryMetadata
+
+Retrieves cluster metadata for a repository including replica information, generation, and health status.
+
+**Request:** `GetRepositoryMetadataRequest`
+```protobuf
+message GetRepositoryMetadataRequest {
+  message Path {
+    string virtual_storage = 1;
+    string relative_path = 2;
+  }
+
+  oneof query {
+    int64 repository_id = 1;  // Query by repository ID
+    Path path = 2;            // Query by virtual storage and path
+  }
+}
+```
+
+**Response:** `GetRepositoryMetadataResponse`
+```protobuf
+message GetRepositoryMetadataResponse {
+  message Replica {
+    string storage = 1;
+    bool assigned = 2;              // Is replica on assigned storage
+    int64 generation = 4;           // Replica generation (-1 if doesn't exist)
+    bool healthy = 5;               // Is replica on healthy storage
+    bool valid_primary = 6;         // Can serve as valid primary
+    google.protobuf.Timestamp verified_at = 7;  // Last verification time
+  }
+
+  int64 repository_id = 1;
+  string virtual_storage = 2;
+  string relative_path = 3;
+  string replica_path = 4;          // Disk path for replicas
+  string primary = 5;               // Current primary storage
+  int64 generation = 6;             // Current generation
+  repeated Replica replicas = 7;    // All replicas (existing and expected)
+}
+```
+
+**Returns:** `NotFound` error if the repository does not exist.
+
+## Common Use Cases
+
+### Checking Cluster Health
+
+```go
+req := &gitalypb.DatalossCheckRequest{
+    VirtualStorage: "default",
+    IncludePartiallyReplicated: true,
+}
+
+resp, err := client.DatalossCheck(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, repo := range resp.Repositories {
+    if repo.Unavailable {
+        log.Printf("Repository %s is unavailable", repo.RelativePath)
+    }
+}
+```
+
+### Adjusting Replication Factor
+
+```go
+req := &gitalypb.SetReplicationFactorRequest{
+    VirtualStorage: "default",
+    RelativePath: "@hashed/ab/cd/abcd1234.git",
+    ReplicationFactor: 3,
+}
+
+resp, err := client.SetReplicationFactor(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+
+log.Printf("Repository assigned to storages: %v", resp.Storages)
+```
+
+### Inspecting Repository Metadata
+
+```go
+req := &gitalypb.GetRepositoryMetadataRequest{
+    Query: &gitalypb.GetRepositoryMetadataRequest_Path{
+        Path: &gitalypb.GetRepositoryMetadataRequest_Path{
+            VirtualStorage: "default",
+            RelativePath: "@hashed/ab/cd/abcd1234.git",
+        },
+    },
+}
+
+resp, err := client.GetRepositoryMetadata(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
+
+log.Printf("Primary: %s, Generation: %d", resp.Primary, resp.Generation)
+for _, replica := range resp.Replicas {
+    log.Printf("Storage: %s, Generation: %d, Healthy: %v", 
+        replica.Storage, replica.Generation, replica.Healthy)
+}
+```
+
+## Package Information
+
+**Package:** `gitaly`  
+**Go Package:** `gitlab.com/gitlab-org/gitaly/v14/proto/go/gitalypb`  
+**Intercepted:** Yes (all RPCs go through Praefect interceptors)

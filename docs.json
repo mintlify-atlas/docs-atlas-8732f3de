@@ -1,122 +1,145 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Gitaly",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#FC6D26",
+    "light": "#FC6D26",
+    "dark": "#FC6D26"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/tnir/gitaly"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tnir/gitaly"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "architecture",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Setup & Configuration",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "setup/installation",
+              "setup/configuration",
+              "setup/authentication",
+              "setup/storage"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "High Availability",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "ha/overview",
+              "ha/praefect",
+              "ha/replication",
+              "ha/failover"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Operations",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "operations/monitoring",
+              "operations/backpressure",
+              "operations/backup",
+              "operations/maintenance"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/object-pools",
+              "advanced/cgroups",
+              "advanced/sidechannel",
+              "advanced/distributed-tracing"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/getting-started",
+              "development/contributing",
+              "development/testing",
+              "development/style-guide"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "gRPC Services",
             "pages": [
-              "api-reference/introduction"
+              "api/overview",
+              "api/rpc-categories"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Repository Services",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/repository-service",
+              "api/blob-service",
+              "api/commit-service",
+              "api/ref-service"
+            ]
+          },
+          {
+            "group": "Git Operations",
+            "pages": [
+              "api/operations-service",
+              "api/remote-service",
+              "api/smarthttp-service",
+              "api/ssh-service"
+            ]
+          },
+          {
+            "group": "Utility Services",
+            "pages": [
+              "api/diff-service",
+              "api/conflicts-service",
+              "api/cleanup-service",
+              "api/namespace-service",
+              "api/objectpool-service",
+              "api/hook-service",
+              "api/wiki-service",
+              "api/server-service"
+            ]
+          },
+          {
+            "group": "Praefect API",
+            "pages": [
+              "api/praefect-service"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Client Libraries",
+        "groups": [
+          {
+            "group": "Using Clients",
+            "pages": [
+              "clients/overview",
+              "clients/go-client",
+              "clients/ruby-client"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

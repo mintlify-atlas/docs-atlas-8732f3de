@@ -1,0 +1,296 @@
+---
+title: DiffService
+description: Service for computing and retrieving diffs between commits
+---
+
+The DiffService provides methods for computing differences between commits, including patches, deltas, and statistics.
+
+## CommitDiff
+
+Returns a stream of commit diffs with patches chunked over messages.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve diffs from
+</ParamField>
+
+<ParamField path="left_commit_id" type="string" required>
+  The commit ID to compare from (base)
+</ParamField>
+
+<ParamField path="right_commit_id" type="string" required>
+  The commit ID to compare to (head)
+</ParamField>
+
+<ParamField path="ignore_whitespace_change" type="bool">
+  Whether to ignore whitespace changes in the diff
+</ParamField>
+
+<ParamField path="paths" type="bytes[]">
+  Optional list of paths to limit the diff to specific files
+</ParamField>
+
+<ParamField path="collapse_diffs" type="bool">
+  Whether to collapse large diffs
+</ParamField>
+
+<ParamField path="enforce_limits" type="bool">
+  Whether to enforce max_files, max_lines, and max_bytes limits
+</ParamField>
+
+<ParamField path="max_files" type="int32">
+  Maximum number of files to include (only enforced when enforce_limits is true)
+</ParamField>
+
+<ParamField path="max_lines" type="int32">
+  Maximum number of lines to include (only enforced when enforce_limits is true)
+</ParamField>
+
+<ParamField path="max_bytes" type="int32">
+  Maximum number of bytes to include (only enforced when enforce_limits is true)
+</ParamField>
+
+<ParamField path="max_patch_bytes" type="int32">
+  Limitation of a single diff patch. Patches surpassing this limit are pruned. If set to 0, empty patches are returned.
+</ParamField>
+
+<ParamField path="safe_max_files" type="int32">
+  Safe maximum files limit (only enforced when collapse_diffs is true)
+</ParamField>
+
+<ParamField path="safe_max_lines" type="int32">
+  Safe maximum lines limit (only enforced when collapse_diffs is true)
+</ParamField>
+
+<ParamField path="safe_max_bytes" type="int32">
+  Safe maximum bytes limit (only enforced when collapse_diffs is true)
+</ParamField>
+
+<ParamField path="diff_mode" type="DiffMode">
+  The mode for generating diffs. Values: `DEFAULT` (linewise diff for text files), `WORDDIFF` (word-level diff for whitespace-separated words)
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="from_path" type="bytes">
+  Original file path
+</ResponseField>
+
+<ResponseField name="to_path" type="bytes">
+  New file path
+</ResponseField>
+
+<ResponseField name="from_id" type="string">
+  Blob ID of the original file (from git diff --full-index)
+</ResponseField>
+
+<ResponseField name="to_id" type="string">
+  Blob ID of the new file (from git diff --full-index)
+</ResponseField>
+
+<ResponseField name="old_mode" type="int32">
+  File mode of the original file
+</ResponseField>
+
+<ResponseField name="new_mode" type="int32">
+  File mode of the new file
+</ResponseField>
+
+<ResponseField name="binary" type="bool">
+  Whether the file is binary
+</ResponseField>
+
+<ResponseField name="raw_patch_data" type="bytes">
+  The raw patch data for this chunk
+</ResponseField>
+
+<ResponseField name="end_of_patch" type="bool">
+  Indicates the end of the patch for this file
+</ResponseField>
+
+<ResponseField name="overflow_marker" type="bool">
+  Indicates the diff overflowed according to the specified limitations. Only this attribute will be set when true.
+</ResponseField>
+
+<ResponseField name="collapsed" type="bool">
+  Indicates the patch surpassed a safe limit and was pruned, but can be requested in full on a separate request
+</ResponseField>
+
+<ResponseField name="too_large" type="bool">
+  Indicates the patch was pruned due to exceeding a hard limit and cannot be expanded
+</ResponseField>
+
+## CommitDelta
+
+Returns a stream of deltas between commits (file changes without patch data).
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve deltas from
+</ParamField>
+
+<ParamField path="left_commit_id" type="string" required>
+  The commit ID to compare from
+</ParamField>
+
+<ParamField path="right_commit_id" type="string" required>
+  The commit ID to compare to
+</ParamField>
+
+<ParamField path="paths" type="bytes[]">
+  Optional list of paths to limit the delta to specific files
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="deltas" type="CommitDelta[]">
+  Array of commit deltas
+</ResponseField>
+
+#### CommitDelta
+
+<ResponseField name="from_path" type="bytes">
+  Original file path
+</ResponseField>
+
+<ResponseField name="to_path" type="bytes">
+  New file path
+</ResponseField>
+
+<ResponseField name="from_id" type="string">
+  Blob ID of the original file
+</ResponseField>
+
+<ResponseField name="to_id" type="string">
+  Blob ID of the new file
+</ResponseField>
+
+<ResponseField name="old_mode" type="int32">
+  File mode of the original file
+</ResponseField>
+
+<ResponseField name="new_mode" type="int32">
+  File mode of the new file
+</ResponseField>
+
+## RawDiff
+
+Returns the raw diff output as a stream.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve the raw diff from
+</ParamField>
+
+<ParamField path="left_commit_id" type="string" required>
+  The commit ID to compare from
+</ParamField>
+
+<ParamField path="right_commit_id" type="string" required>
+  The commit ID to compare to
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of raw diff data
+</ResponseField>
+
+## RawPatch
+
+Returns the raw patch output as a stream.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve the raw patch from
+</ParamField>
+
+<ParamField path="left_commit_id" type="string" required>
+  The commit ID to compare from
+</ParamField>
+
+<ParamField path="right_commit_id" type="string" required>
+  The commit ID to compare to
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Chunk of raw patch data
+</ResponseField>
+
+## DiffStats
+
+Returns statistics about changes between commits.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve diff statistics from
+</ParamField>
+
+<ParamField path="left_commit_id" type="string" required>
+  The commit ID to compare from
+</ParamField>
+
+<ParamField path="right_commit_id" type="string" required>
+  The commit ID to compare to
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stats" type="DiffStats[]">
+  Array of diff statistics for changed files
+</ResponseField>
+
+#### DiffStats
+
+<ResponseField name="path" type="bytes">
+  File path
+</ResponseField>
+
+<ResponseField name="additions" type="int32">
+  Number of lines added
+</ResponseField>
+
+<ResponseField name="deletions" type="int32">
+  Number of lines deleted
+</ResponseField>
+
+<ResponseField name="old_path" type="bytes">
+  Original file path (for renamed files)
+</ResponseField>
+
+## FindChangedPaths
+
+Returns a list of files that have been changed in the given commits. Each commit is compared to its parent. Merge commits show files that are different to all of their parents.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search for changed paths
+</ParamField>
+
+<ParamField path="commits" type="string[]" required>
+  List of commit IDs to find changed paths for
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="paths" type="ChangedPaths[]">
+  Array of changed paths with their status
+</ResponseField>
+
+#### ChangedPaths
+
+<ResponseField name="path" type="bytes">
+  File path that was changed
+</ResponseField>
+
+<ResponseField name="status" type="Status">
+  Type of change. Values: `ADDED`, `MODIFIED`, `DELETED`, `TYPE_CHANGE`, `COPIED`
+</ResponseField>

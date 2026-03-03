@@ -1,0 +1,126 @@
+---
+title: ConflictsService
+description: Service for handling merge conflicts and conflict resolution
+---
+
+The ConflictsService provides methods for listing conflict files and resolving conflicts during merge operations.
+
+## ListConflictFiles
+
+Lists all files with conflicts between two commits.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check for conflicts
+</ParamField>
+
+<ParamField path="our_commit_oid" type="string" required>
+  The OID of the local commit
+</ParamField>
+
+<ParamField path="their_commit_oid" type="string" required>
+  The OID of the remote commit to merge
+</ParamField>
+
+<ParamField path="allow_tree_conflicts" type="bool">
+  If true, the request will not fail when tree conflicts are present. Responses may contain conflict files where some paths are unset.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="files" type="ConflictFile[]">
+  Array of conflict files
+</ResponseField>
+
+#### ConflictFile
+
+Each ConflictFile contains either a header or content:
+
+<ResponseField name="header" type="ConflictFileHeader">
+  Metadata about the conflicting file
+</ResponseField>
+
+<ResponseField name="content" type="bytes">
+  Chunk of file content with conflict markers
+</ResponseField>
+
+#### ConflictFileHeader
+
+<ResponseField name="commit_oid" type="string">
+  Commit OID where the conflict was detected
+</ResponseField>
+
+<ResponseField name="their_path" type="bytes">
+  Path in their branch
+</ResponseField>
+
+<ResponseField name="our_path" type="bytes">
+  Path in our branch
+</ResponseField>
+
+<ResponseField name="our_mode" type="int32">
+  File mode in our branch
+</ResponseField>
+
+<ResponseField name="ancestor_path" type="bytes">
+  Path in the common ancestor
+</ResponseField>
+
+## ResolveConflicts
+
+Attempts to resolve conflicts with user-provided merge resolutions. If successful, creates a new merge commit.
+
+### Request (Stream)
+
+The first message must contain the header, followed by messages containing the files JSON data.
+
+#### Header (First Message)
+
+<ParamField path="repository" type="Repository" required>
+  The repository where conflicts will be resolved and where source_branch will be updated
+</ParamField>
+
+<ParamField path="our_commit_oid" type="string" required>
+  The OID of the local commit
+</ParamField>
+
+<ParamField path="target_repository" type="Repository" required>
+  The repository from which their_commit_oid will be retrieved
+</ParamField>
+
+<ParamField path="their_commit_oid" type="string" required>
+  The OID of the remote commit to merge into the local commit
+</ParamField>
+
+<ParamField path="source_branch" type="bytes" required>
+  The branch on which the new merge commit will be created
+</ParamField>
+
+<ParamField path="target_branch" type="bytes" required>
+  The branch to fetch from target_repository if their_commit_oid doesn't exist in repository
+</ParamField>
+
+<ParamField path="commit_message" type="bytes" required>
+  The commit message for the newly created merge commit
+</ParamField>
+
+<ParamField path="user" type="User" required>
+  The user to set as author and committer of the merge commit
+</ParamField>
+
+<ParamField path="timestamp" type="google.protobuf.Timestamp">
+  Optional timestamp to use as the committer date. If not set, the current time is used.
+</ParamField>
+
+#### Subsequent Messages
+
+<ParamField path="files_json" type="bytes">
+  JSON-encoded list of conflict resolutions
+</ParamField>
+
+### Response
+
+<ResponseField name="resolution_error" type="string">
+  Description of why conflict resolution failed. Empty if successful. Check this field to verify whether the merge commit was correctly created.
+</ResponseField>

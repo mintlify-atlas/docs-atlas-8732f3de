@@ -1,0 +1,179 @@
+---
+title: Contributing
+description: Guidelines for contributing to Gitaly
+---
+
+## Developer Certificate of Origin and License
+
+By contributing to GitLab B.V., you accept and agree to the following terms and conditions for your present and future contributions submitted to GitLab B.V. Except for the license granted herein to GitLab B.V. and recipients of software distributed by GitLab B.V., you reserve all right, title, and interest in and to your Contributions.
+
+All contributions are subject to the Developer Certificate of Origin and license set out at [docs.gitlab.com/ce/legal/developer_certificate_of_origin](https://docs.gitlab.com/ce/legal/developer_certificate_of_origin).
+
+## Code of Conduct
+
+As contributors and maintainers of this project, we pledge to respect all people who contribute through reporting issues, posting feature requests, updating documentation, submitting pull requests or patches, and other activities.
+
+We are committed to making participation in this project a harassment-free experience for everyone, regardless of level of experience, gender, gender identity and expression, sexual orientation, disability, personal appearance, body size, race, ethnicity, age, or religion.
+
+Examples of unacceptable behavior include:
+- Use of sexual language or imagery
+- Derogatory comments or personal attacks
+- Trolling, public or private harassment
+- Insults or other unprofessional conduct
+
+Project maintainers have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned to this Code of Conduct.
+
+Instances of abusive, harassing, or otherwise unacceptable behavior can be reported by emailing contact@gitlab.com.
+
+This Code of Conduct is adapted from the [Contributor Covenant](https://contributor-covenant.org), version 1.1.0.
+
+## Development Process
+
+Gitaly follows the engineering process as described in the [handbook](https://about.gitlab.com/handbook/engineering/workflow/), with the exception that our [issue tracker](https://gitlab.com/gitlab-org/gitaly/issues/) is on the Gitaly project and there's no distinction between developers and maintainers.
+
+Every team member is equally responsible for:
+- A successful master pipeline
+- Fixing security issues
+
+Merge requests need **approval by at least two [Gitaly team members](https://gitlab.com/groups/gl-gitaly/group_members)**.
+
+## Commit Guidelines
+
+In this project we value good commit hygiene. Clean commits make it much easier to discover when bugs have been introduced, why changes have been made, and what their reasoning was.
+
+When you submit a merge request, expect the changes to be reviewed commit-by-commit. To make it easier for the reviewer, please submit your MR with nicely formatted commit messages and changes tied together step-by-step.
+
+### Write Small, Atomic Commits
+
+Commits should be as small as possible but not smaller than required to make a logically complete change. If you struggle to find a proper summary for your commit message, it's a good indicator that the changes you make in this commit may not be focused enough.
+
+**Tips:**
+- Use `git add -p` to add only relevant changes
+- Use `git stash` to help you stay focused on additional changes until you've implemented them in a separate commit
+
+### Split Up Refactors and Behavioral Changes
+
+Introducing changes in behavior very often requires preliminary refactors. You should never squash refactoring and behavioral changes into a single commit, because that makes it very hard to spot the actual change later.
+
+### Tell a Story
+
+When splitting up commits into small and logical changes, there will be many interdependencies between all commits of your feature branch. If you make changes to simply prepare another change, you should briefly mention the overall goal that this commit is heading towards.
+
+### Describe Why You Make Changes, Not What You Change
+
+When writing commit messages, you should typically explain why a given change is being made. What has changed is typically visible from the diff itself.
+
+A good commit message answers:
+- What is the current situation?
+- Why does that situation need to change?
+- How does your change fix that situation?
+- Are there relevant resources which help further the understanding?
+
+You may want to set up a [message template](https://thoughtbot.com/blog/better-commit-messages-with-a-gitmessage-template) to pre-populate your editor when executing `git commit`.
+
+### Use Scoped Commit Subjects
+
+Many projects typically prefix their commit subjects with a scope. For example, if you're implementing a new feature "X" for subsystem "Y", your commit message would be "Y: Implement new feature X". This makes it easier to quickly sift through relevant commits.
+
+### Keep the Commit Subject Short
+
+Because commit subjects are displayed in various command line tools by default, keep the commit subject short. A good rule of thumb is that it shouldn't exceed 72 characters.
+
+### Mention the Original Commit That Introduced Bugs
+
+When implementing bugfixes, it's often useful information to see why and when a bug was introduced. Mention the original commit that introduced a given bug using `git blame` or `git bisect`.
+
+You can create an alias for this:
+
+```shell
+git config alias.reference "show -s --pretty=reference"
+git reference HEAD
+# Output: cf7f9ffe5 (style: Document best practices for commit hygiene, 2020-11-20)
+```
+
+### Use Interactive Rebases
+
+Use interactive rebases to end up with commit series that are readable and easily reviewable one-by-one. Use interactive rebases to rearrange commits, improve their commit messages, or squash multiple commits into one.
+
+### Create Fixup Commits
+
+When you create multiple commits as part of feature branches and discover bugs in one of the commits you've just written, create a fixup commit:
+
+```shell
+git commit --fixup=ORIG_COMMIT
+git rebase --interactive --autosquash
+```
+
+### Avoid Merge Commits
+
+During development, other changes might be made to the target branch. These changes might cause a conflict with your changes. Instead of merging the target branch into your topic branch, rebase your branch onto the target branch. Consider setting up `git rerere` to avoid resolving the same conflict over and over again.
+
+### Ensure All Commits Build and Pass Tests
+
+To keep history bisectable using `git bisect`, ensure that all of your commits build and pass tests:
+
+```shell
+git rebase -i --exec='make build format lint test' origin/master
+```
+
+This automatically builds each commit and verifies that they pass formatting, linting, and the test suite.
+
+## Changelog
+
+Gitaly keeps a [changelog](https://gitlab.com/gitlab-org/gitaly/-/blob/master/CHANGELOG.md) that is generated:
+- When a new release is created
+- From commit messages where a specific trailer is used
+
+The trailer should have the following format: `Changelog: <option>` where `<option>` is one of:
+- `added`
+- `fixed`
+- `changed`
+- `deprecated`
+- `removed`
+- `security`
+- `performance`
+- `other`
+
+The commit title is used to generate a changelog entry.
+
+## Example Commit Message
+
+```plaintext
+package: Summarize change in 50 characters or less
+
+The first line of the commit message is the summary. The summary should
+start with a capital letter and not end with a period. Optionally
+prepend the summary with the package name, feature, file, or piece of
+the codebase where the change belongs to.
+
+After an empty line the commit body provides a more detailed explanatory
+text. This body is wrapped at 72 characters. The body can consist of
+several paragraphs, each separated with a blank line.
+
+The body explains the problem that this commit is solving. Focus on why
+you are making this change as opposed to what (the code explains this).
+Are there side effects or other counterintuitive consequences of
+this change? Here's the place to explain them.
+
+- Bullet points are okay, too
+
+- Typically a hyphen or asterisk is used for the bullet, followed by a
+  single space, with blank lines in between
+
+- Use a hanging indent
+
+You can provide links to the related issue, or the issue that's fixed by
+the change at the bottom using a trailer.
+
+Fixes: https://gitlab.com/gitlab-org/gitaly/-/issues/123
+Changelog: added
+Signed-off-by: Alice <alice@example.com>
+```
+
+## Review Process
+
+See [REVIEWING.md](https://gitlab.com/gitlab-org/gitaly/-/blob/master/REVIEWING.md) for the review process.
+
+## Getting Started
+
+See the [beginner's guide](/development/getting-started) for information on setting up your development environment and getting started with Gitaly development.

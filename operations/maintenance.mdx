@@ -1,0 +1,231 @@
+---
+title: Maintenance Operations
+description: Perform routine maintenance operations on Gitaly to optimize performance and maintain repository health.
+---
+
+Gitaly requires periodic maintenance to ensure optimal performance and repository health. This page covers common maintenance operations and best practices.
+
+## Repository Maintenance
+
+### Repository Repacking
+
+Repacking consolidates Git objects to improve performance and reduce disk usage.
+
+#### Full Repack
+
+The `RepackFull` RPC performs a full repository repack:
+
+```toml
+# Limit full repacks using rate limiting
+[[rate_limiting]]
+rpc = "/gitaly.RepositoryService/RepackFull"
+interval = "1m"
+burst = 1
+```
+
+<Tip>
+Use rate limiting on `RepackFull` to prevent resource exhaustion, as it's an expensive operation.
+</Tip>
+
+### Git Version Requirements
+
+Gitaly requires Git 2.33.0 or newer. Ensure your Git installation is up to date:
+
+```bash
+git --version
+```
+
+## Performance Optimization
+
+### Monitoring Resource Usage
+
+Regularly monitor Gitaly performance using:
+
+- [Grafana dashboards](/operations/monitoring#grafana-dashboards) for overall health
+- [Prometheus metrics](/operations/monitoring#prometheus-metrics) for detailed metrics
+- [Distributed tracing](/operations/monitoring#distributed-tracing) for request analysis
+
+### Backpressure Configuration
+
+Properly configured [backpressure settings](/operations/backpressure) prevent resource exhaustion:
+
+- Set concurrency limits for expensive operations
+- Configure rate limits for resource-intensive RPCs
+- Monitor queue metrics to identify bottlenecks
+
+## High Availability Maintenance
+
+### Praefect and Replication
+
+For high availability deployments using Praefect:
+
+- Monitor replication lag between primary and secondary Gitaly servers
+- Ensure PostgreSQL (9.6+) is properly maintained
+- Verify dirty repositories are being replicated
+
+### Database Maintenance
+
+Praefect uses PostgreSQL to store internal state:
+
+- Regularly vacuum the database
+- Monitor connection pool usage
+- Keep PostgreSQL updated (minimum version 9.6)
+
+## Backup Best Practices
+
+### Regular Backups
+
+Use [gitaly-backup](/operations/backup) for repository backups:
+
+```bash
+# Create daily backups
+/opt/gitlab/embedded/bin/gitaly-backup create \
+  -path "s3://gitlab-backups?region=us-east-1" \
+  -parallel 10 \
+  < backup_job.json
+```
+
+### Backup Verification
+
+Periodically test backup restoration:
+
+1. Restore to a test environment
+2. Verify repository integrity
+3. Confirm all references are present
+4. Test that commits and branches are accessible
+
+## System Resource Management
+
+### Disk Space
+
+Monitor disk usage:
+
+- Repository storage paths
+- Temporary directories used during operations
+- Backup storage locations
+
+### Memory Management
+
+Gitaly operations can be memory-intensive:
+
+- Monitor memory usage via Prometheus metrics
+- Configure concurrency limits to prevent memory exhaustion
+- Consider server memory when setting `max_per_repo` limits
+
+### CPU Utilization
+
+Git operations are CPU-intensive:
+
+- Monitor CPU usage during peak hours
+- Use `parallel` and `parallel-storage` flags to balance load
+- Scale horizontally by adding Gitaly servers as needed
+
+## Logging and Troubleshooting
+
+### Log Analysis
+
+For detailed latency analysis, use ELK:
+
+1. Go to [ELK](https://log.gitlab.net)
+2. Search for Gitaly RPC logs
+3. Analyze latency patterns and errors
+
+See [Ad-hoc Latency Analysis](/operations/monitoring#ad-hoc-latency-analysis-with-elk) for more details.
+
+### Distributed Tracing
+
+Enable [distributed tracing](/operations/monitoring#distributed-tracing) for detailed request tracking:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+## Upgrade Procedures
+
+### Git Version Upgrades
+
+When upgrading Git:
+
+1. Test the new version in a staging environment
+2. Verify compatibility with Gitaly operations
+3. Update across all Gitaly servers simultaneously
+4. Monitor for any performance regressions
+
+### Gitaly Upgrades
+
+Gitaly is included in GitLab installations:
+
+- Follow [GitLab upgrade procedures](https://about.gitlab.com/install/)
+- Ensure Git version compatibility
+- Verify Ruby version requirements (Ruby 2.7+)
+
+### Go and Ruby Requirements
+
+For source installations:
+
+- Go 1.16 or Go 1.17
+- Ruby 2.7
+- Run `make` to compile after upgrades
+
+## Storage Management
+
+### Storage Paths
+
+Ensure storage paths are properly configured in GitLab:
+
+- Monitor available disk space
+- Verify permissions on storage directories
+- Consider using multiple storage locations for load distribution
+
+### Repository Migration
+
+When migrating repositories between Gitaly servers:
+
+1. Use GitLab's built-in repository migration features
+2. Verify data integrity after migration
+3. Update configuration to point to new storage locations
+4. Monitor replication if using Praefect
+
+## Scheduled Maintenance Windows
+
+### Planning Maintenance
+
+Schedule maintenance during low-traffic periods:
+
+- Full repository repacks
+- Database vacuuming (for Praefect)
+- Backup verification tests
+- System upgrades
+
+### Maintenance Checklist
+
+<Steps>
+  <Step title="Pre-maintenance">
+    - Notify users of scheduled maintenance
+    - Create full backup
+    - Document current configuration
+    - Verify monitoring is operational
+  </Step>
+
+  <Step title="During maintenance">
+    - Perform planned operations
+    - Monitor resource usage
+    - Document any issues encountered
+    - Test critical functionality
+  </Step>
+
+  <Step title="Post-maintenance">
+    - Verify all services are running
+    - Check monitoring dashboards
+    - Confirm backups completed successfully
+    - Document lessons learned
+  </Step>
+</Steps>
+
+## Additional Resources
+
+- [Gitaly Configuration Guide](https://docs.gitlab.com/ee/administration/gitaly/)
+- [Monitoring and Observability](/operations/monitoring)
+- [Backpressure Configuration](/operations/backpressure)
+- [Backup and Restore](/operations/backup)
+- [Video: How Gitaly uses Prometheus monitoring](https://youtu.be/R6F674Nj3wI)

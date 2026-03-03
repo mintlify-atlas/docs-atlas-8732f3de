@@ -1,0 +1,116 @@
+---
+title: Getting Started
+description: Developer getting started guide for contributing to Gitaly
+---
+
+## Prerequisites
+
+### GitLab Development Kit (GDK)
+
+Before you can develop on Gitaly, you must have the [GitLab Development Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit) properly installed. After installing GitLab, verify it's working by starting the required servers and visiting GitLab at `http://localhost:3000`.
+
+### Gitaly in GDK
+
+Within the GDK, you can find a clone of the Gitaly repository in `/path/to/gdk/gitaly`. You can check out your working branch here, but be aware that `gdk update` will reset it to the tag specified by `/path/to/gdk/gitlab/GITALY_SERVER_VERSION`.
+
+To prevent `gdk update` from overwriting your Gitaly checkout, add the following to `/path/to/gdk/gdk.yml`:
+
+```yaml
+gitaly:
+  auto_update: false
+```
+
+## Understanding Gitaly
+
+### What is Gitaly?
+
+Gitaly provides high-level RPC access to Git repositories. It controls access to the `git` binary and is used by GitLab to read and write Git data. Gitaly is present in every GitLab installation and coordinates Git repository storage and retrieval.
+
+### Protocol Buffers
+
+Data is shared between GitLab Rails and Gitaly using [Google Protocol Buffers](https://developers.google.com/protocol-buffers) to provide a shared format for serializing the exchanged data.
+
+Protocol buffers define which requests can be made and what data the requester must provide with the request. The response to each request is likewise defined using the Protocol buffers format.
+
+The protocol definitions can be found in `proto/*.proto`.
+
+## Development Workflow
+
+### Using the Makefile
+
+Gitaly uses [Make](https://en.wikipedia.org/wiki/Make_(software)) to manage its build process. All targets are defined in the top-level [Makefile](https://gitlab.com/gitlab-org/gitaly/-/blob/master/Makefile). By default, running `make` will build the `all` target, which installs Gitaly into the `./_build/bin` directory.
+
+The most frequently used targets:
+
+- `build`: Build Gitaly, but do not install it
+- `install`: Build and install Gitaly. The destination directory can be modified by setting `PREFIX`
+- `test`: Execute both Go and Ruby tests
+- `clean`: Remove all generated build artifacts
+
+You can modify the build process by setting various variables. For example:
+- `make V=1` for verbose build
+- Override `PROTOC_VERSION` and `PROTOC_HASH` to use a different protobuf compiler version
+
+To persist your configuration, create a `config.mak` file next to the Makefile and put all variables you wish to override there.
+
+### Recommended Development Approach
+
+Instead of using the "edit code and reload" cycle with `localhost:3000`, focus on the specific RPC you need to work on. This is faster and more efficient.
+
+#### Suggested Workflow
+
+1. **Find the RPC tests** - The RPC you want to work on will have tests in `internal/gitaly/service/...`
+
+2. **Verify tests pass** - Before editing any code, make sure the tests pass:
+
+```bash
+TEST_PACKAGES=./internal/gitaly/service/foobar TEST_OPTIONS="-count=1 -run=MyRPC" make test
+```
+
+In this command, `MyRPC` is a regex that will match functions like `TestMyRPCSuccess` and `TestMyRPCValidationFailure`.
+
+3. **Edit and test** - Tweak the implementation or add test cases and re-run the tests. This approach is much faster than "edit gitaly, reinstall Gitaly into GDK, restart, reload `localhost:3000`".
+
+4. **Test in GDK** - To see the changes in GDK, run:
+
+```shell
+make gitaly-setup
+gdk restart gitaly
+```
+
+## Development Process
+
+The general approach for adding new functionality:
+
+1. Add a request/response combination to [Gitaly Proto](https://gitlab.com/gitlab-org/gitaly/-/tree/master/proto), or edit an existing one
+2. Change [Gitaly](https://gitlab.com/gitlab-org/gitaly) accordingly
+3. Use the endpoint in other GitLab components (CE/EE, GitLab Workhorse, etc.)
+
+### Configuration Changes
+
+When modifying Gitaly or Praefect configuration, propagate the changes to:
+
+1. [gitlab/omnibus-gitlab](https://gitlab.com/gitlab-org/omnibus-gitlab) - contains template files for generating Gitaly's and Praefect's configuration
+2. [gitlab/CNG](https://gitlab.com/gitlab-org/build/CNG) - contains configuration required to run Gitaly in a container
+
+### Working with Gitaly Proto
+
+The [Protocol buffer documentation](https://developers.google.com/protocol-buffers/docs/overview) combined with the `*.proto` files in the `proto/` directory should be enough to get you started.
+
+A service needs to be picked that can receive the procedure call. A general rule of thumb is that the service is named either after the Git CLI command or after the Git object type.
+
+If either your request or response data can exceed 100KB, you need to use the `stream` keyword. To generate the server and client code, run `make proto`.
+
+### Gitaly-ruby
+
+Gitaly is mostly written in Go but it also uses a pool of Ruby helper processes called gitaly-ruby. This helper application is a gRPC server that handles certain requests proxied from the Go parent process.
+
+**Note:** Gitaly-ruby is unsuitable for RPCs that are slow or called with high frequency. It should only be used for:
+- Legacy GitLab application code that is too complex or subtle to rewrite in Go
+- Prototyping (if you're uncomfortable writing Go)
+
+For any changes to `gitaly-ruby` to be used by GDK, you need to run `make gitaly-setup` in your GDK root and restart your processes.
+
+## Rails Tests with Custom Gitaly
+
+To use your custom Gitaly when running Rails tests in GDK, go to the `gitlab` directory in your GDK and follow the instructions at [Running tests with a locally modified version of Gitaly](https://docs.gitlab.com/ee/development/gitaly.html#running-tests-with-a-locally-modified-version-of-gitaly).

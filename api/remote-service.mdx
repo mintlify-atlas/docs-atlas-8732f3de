@@ -1,0 +1,113 @@
+---
+title: RemoteService
+description: Manage remote repositories and synchronize repository mirrors
+---
+
+RemoteService provides operations for interacting with remote repositories, including mirror synchronization and remote repository discovery.
+
+## UpdateRemoteMirror
+
+Compares the references in the target repository and its remote mirror repository. Any differences in the references are then addressed by pushing the differing references to the mirror. Created and modified references are updated, removed references are deleted from the mirror. Updates all tags. Branches are updated if they match the patterns specified in the request.
+
+**Streaming RPC**: The request can be streamed to send multiple branch patterns.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository whose mirror repository to update
+</ParamField>
+
+<ParamField path="remote" type="Remote" required>
+  Parameters required to connect to the remote repository
+</ParamField>
+
+<ParamField path="remote.url" type="string" required>
+  URL of the remote repository
+</ParamField>
+
+<ParamField path="remote.http_authorization_header" type="string">
+  Optional HTTP header for authenticating against the remote repository
+</ParamField>
+
+<ParamField path="remote.http_host" type="string">
+  Hostname of the remote repository. Use when the URL hostname has been resolved to an IP address to prevent DNS rebinding
+</ParamField>
+
+<ParamField path="only_branches_matching" type="bytes[]">
+  Patterns to match branches against. Only matched branches are updated in the mirror. If not specified, all branches are updated. Patterns should only contain the branch name without 'refs/heads/' prefix. "*" can be used as a wildcard. Can be streamed over multiple messages
+</ParamField>
+
+<ParamField path="ssh_key" type="string">
+  SSH key to use for accessing the mirror repository
+</ParamField>
+
+<ParamField path="known_hosts" type="string">
+  Identities used for strict host key checking
+</ParamField>
+
+<ParamField path="keep_divergent_refs" type="bool">
+  Whether to update diverged references in the mirror repository
+</ParamField>
+
+### Response
+
+<ResponseField name="divergent_refs" type="bytes[]">
+  List of references that had diverged in the mirror from the source repository
+</ResponseField>
+
+## FindRemoteRepository
+
+Checks if a remote repository exists and is accessible.
+
+### Request
+
+<ParamField path="remote" type="string" required>
+  Remote repository identifier to check
+</ParamField>
+
+<ParamField path="storage_name" type="string" required>
+  Storage name to redirect request to proper storage. Must be valid but any storage works
+</ParamField>
+
+### Response
+
+<ResponseField name="exists" type="bool">
+  Whether the remote repository exists and is accessible
+</ResponseField>
+
+<Note>
+This RPC might throw a gRPC Unavailable code to signal the request failure is transient.
+</Note>
+
+## FindRemoteRootRef
+
+Tries to find the root reference of a remote repository. The root reference is the default branch as pointed to by the remote's HEAD reference.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository in which the request shall be executed
+</ParamField>
+
+<ParamField path="remote_url" type="string" required>
+  Remote repository URL to fetch from
+</ParamField>
+
+<ParamField path="http_authorization_header" type="string">
+  HTTP header to add to the request for authentication
+</ParamField>
+
+<ParamField path="http_host" type="string">
+  Hostname of the remote repository. Use when the URL hostname has been resolved to an IP address to prevent DNS rebinding
+</ParamField>
+
+### Response
+
+<ResponseField name="ref" type="string">
+  Name of the remote root reference (default branch)
+</ResponseField>
+
+### Errors
+
+- **InvalidArgument**: Returned if the specified remote does not exist
+- **NotFound**: Returned if no HEAD branch was found

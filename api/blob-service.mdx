@@ -1,0 +1,360 @@
+---
+title: "BlobService"
+description: "RPCs for retrieving and listing blob objects and LFS pointers"
+---
+
+The BlobService provides RPCs for accessing blob objects in a Git repository. This includes retrieving individual blobs, listing all blobs reachable from specific revisions, and working with Large File Storage (LFS) pointers.
+
+## GetBlob
+
+Returns the contents of a blob object referenced by its object ID. Uses streaming to return arbitrarily large binary responses in chunks.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the blob
+</ParamField>
+
+<ParamField path="oid" type="string" required>
+  Object ID (SHA1) of the blob to retrieve
+</ParamField>
+
+<ParamField path="limit" type="int64">
+  Maximum number of bytes to receive. Use -1 to get the full blob regardless of size. Default is 0.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="size" type="int64">
+  Total blob size in bytes. Only present in the first response message.
+</ResponseField>
+
+<ResponseField name="data" type="bytes">
+  Chunk of blob data
+</ResponseField>
+
+<ResponseField name="oid" type="string">
+  Object ID of the blob. Only present in the first response message. Empty if no blob was found.
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "oid": "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9",
+  "limit": 1048576
+}
+```
+
+## GetBlobs
+
+Retrieves multiple blobs by revision/path pairs.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the blobs
+</ParamField>
+
+<ParamField path="revision_paths" type="RevisionPath[]" required>
+  Array of revision/path pairs identifying the blobs to retrieve
+</ParamField>
+
+<ParamField path="revision_paths[].revision" type="string">
+  The revision (commit, branch, tag) to retrieve the blob from
+</ParamField>
+
+<ParamField path="revision_paths[].path" type="bytes">
+  Path to the file within the revision
+</ParamField>
+
+<ParamField path="limit" type="int64">
+  Maximum number of bytes to receive per blob. Use -1 for no limit.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="size" type="int64">
+  Blob size. Only present on the first message per blob.
+</ResponseField>
+
+<ResponseField name="data" type="bytes">
+  Chunk of blob data. May span multiple messages.
+</ResponseField>
+
+<ResponseField name="oid" type="string">
+  Object ID of the blob. Only present on the first message per blob. Empty if no blob was found.
+</ResponseField>
+
+<ResponseField name="is_submodule" type="bool">
+  Whether this is a submodule
+</ResponseField>
+
+<ResponseField name="mode" type="int32">
+  File mode (e.g., 0644)
+</ResponseField>
+
+<ResponseField name="revision" type="string">
+  The revision this blob was retrieved from
+</ResponseField>
+
+<ResponseField name="path" type="bytes">
+  The path this blob was retrieved from
+</ResponseField>
+
+<ResponseField name="type" type="ObjectType">
+  The type of the object
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "revision_paths": [
+    {
+      "revision": "main",
+      "path": "README.md"
+    },
+    {
+      "revision": "v1.0.0",
+      "path": "LICENSE"
+    }
+  ],
+  "limit": -1
+}
+```
+
+## ListBlobs
+
+Lists all blobs reachable from a given set of revisions by doing a graph walk.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to enumerate blobs from
+</ParamField>
+
+<ParamField path="revisions" type="string[]" required>
+  List of revisions to retrieve blobs from. Supports pseudo-revisions `--all` and `--not` as well as negated revisions via `^revision`. Must not be empty.
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of blobs to return. If set to 0 (default), all found blobs will be returned.
+</ParamField>
+
+<ParamField path="bytes_limit" type="int64">
+  Maximum number of bytes to receive for each blob. If set to 0, no blob data will be sent. If -1, all blob data will be sent without limits.
+</ParamField>
+
+<ParamField path="with_paths" type="bool">
+  Whether paths of blobs should be returned on a best-effort basis. A path will only exist if the blob was traversed via a tree.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="blobs" type="Blob[]">
+  Array of blobs found. If blob contents exceed the maximum gRPC message size, the blob will be split across multiple responses.
+</ResponseField>
+
+<ResponseField name="blobs[].oid" type="string">
+  Object ID of the blob. Only set for the first message of each specific blob.
+</ResponseField>
+
+<ResponseField name="blobs[].size" type="int64">
+  Size of the blob in bytes. Only set for the first message of each specific blob.
+</ResponseField>
+
+<ResponseField name="blobs[].data" type="bytes">
+  Contents of the blob. Optional and depends on bytes_limit parameter.
+</ResponseField>
+
+<ResponseField name="blobs[].path" type="bytes">
+  Path of the blob. May be unset depending on how the blob was traversed.
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "revisions": ["main", "develop"],
+  "limit": 100,
+  "bytes_limit": 0,
+  "with_paths": true
+}
+```
+
+## ListAllBlobs
+
+Retrieves all blobs in the repository, including those not reachable by any reference.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to enumerate blobs from
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of blobs to return. If set to 0 (default), all found blobs will be returned.
+</ParamField>
+
+<ParamField path="bytes_limit" type="int64">
+  Maximum number of bytes to receive for each blob. If set to 0, no blob data will be sent. If -1, all blob data will be sent without limits.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="blobs" type="Blob[]">
+  Array of blobs found. If blob contents exceed the maximum gRPC message size, the blob will be split across multiple responses.
+</ResponseField>
+
+<ResponseField name="blobs[].oid" type="string">
+  Object ID of the blob. Only set for the first message of each specific blob.
+</ResponseField>
+
+<ResponseField name="blobs[].size" type="int64">
+  Size of the blob in bytes. Only set for the first message of each specific blob.
+</ResponseField>
+
+<ResponseField name="blobs[].data" type="bytes">
+  Contents of the blob. Optional and depends on bytes_limit parameter.
+</ResponseField>
+
+## GetLFSPointers
+
+Retrieves LFS pointers from a given set of object IDs. This RPC filters all requested objects and only returns those which refer to a valid LFS pointer.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve LFS pointers from
+</ParamField>
+
+<ParamField path="blob_ids" type="string[]" required>
+  List of blob IDs to check for LFS pointers. Must be non-empty.
+</ParamField>
+
+### Response
+
+<ResponseField name="lfs_pointers" type="LFSPointer[]">
+  List of LFS pointers found
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].size" type="int64">
+  Size of the LFS pointer blob (not the size of the LFS object it points to)
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].data" type="bytes">
+  Raw data of the LFS pointer blob in the format specified by the LFS project
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].oid" type="string">
+  Object ID of the blob
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "blob_ids": [
+    "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9",
+    "1234567890abcdef1234567890abcdef12345678"
+  ]
+}
+```
+
+## ListLFSPointers
+
+Retrieves LFS pointers reachable from a given set of revisions by doing a graph walk. This includes both normal revisions like an object ID or branch, but also the pseudo-revisions "--all" and "--not". Revisions which don't reference any LFS pointers are ignored.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve LFS pointers from
+</ParamField>
+
+<ParamField path="revisions" type="string[]" required>
+  List of revisions to retrieve LFS pointers from. Must be non-empty.
+</ParamField>
+
+<ParamField path="limit" type="int32">
+  Maximum number of LFS pointers to return. 0 means no limit.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="lfs_pointers" type="LFSPointer[]">
+  List of LFS pointers found
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].size" type="int64">
+  Size of the LFS pointer blob
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].data" type="bytes">
+  Raw data of the LFS pointer blob
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].oid" type="string">
+  Object ID of the blob
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "revisions": ["main", "--all"],
+  "limit": 100
+}
+```
+
+## ListAllLFSPointers
+
+Retrieves all LFS pointers in the repository, including those not reachable by any reference.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve LFS pointers from
+</ParamField>
+
+<ParamField path="limit" type="int32">
+  Maximum number of LFS pointers to return. 0 means no limit.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="lfs_pointers" type="LFSPointer[]">
+  List of LFS pointers found
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].size" type="int64">
+  Size of the LFS pointer blob
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].data" type="bytes">
+  Raw data of the LFS pointer blob
+</ResponseField>
+
+<ResponseField name="lfs_pointers[].oid" type="string">
+  Object ID of the blob
+</ResponseField>

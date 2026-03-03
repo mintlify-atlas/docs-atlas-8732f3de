@@ -1,0 +1,124 @@
+---
+title: Monitoring and Observability
+description: Monitor Gitaly performance with Prometheus metrics, Grafana dashboards, and distributed tracing.
+---
+
+Gitaly provides comprehensive monitoring and observability capabilities to help you track performance, identify bottlenecks, and troubleshoot issues.
+
+## Grafana Dashboards
+
+Gitaly includes pre-built Grafana dashboards for monitoring performance on GitLab.com and self-managed instances.
+
+### Overview Dashboard
+
+The main overview dashboard provides high-level metrics across all Gitaly operations:
+
+- Overall RPC request rates
+- Latency percentiles
+- Error rates
+- Resource utilization
+
+[View Gitaly Overview Dashboard](https://dashboards.gitlab.com/d/gitaly-main/gitaly-overview)
+
+### Feature Request Rate Overview
+
+For detailed analysis of specific features and RPC methods:
+
+[View Features Overview Dashboard](https://dashboards.gitlab.com/d/000000198/gitaly-features-overview)
+
+### Editing Dashboards
+
+Use the Grafana web interface to customize dashboards:
+
+<Warning>
+Always click the 'Save' button at the top of the Grafana screen when making changes.
+</Warning>
+
+#### Tiled (Repeated) Dashboards
+
+When editing tiled dashboards:
+
+- Edit only the first tile (top left)
+- Settings from the first tile automatically apply to all other tiles
+- Changes to any other tile will be lost
+
+#### Drop-down Values
+
+Dashboard drop-down menus (for GRPC method names, Prometheus jobs, etc.) use Prometheus queries:
+
+1. Click the gear icon at the top of the dashboard
+2. Navigate to the 'Templating' section
+3. Edit the Prometheus queries as needed
+
+<Note>
+Grafana templates use a combination of PromQL and Grafana-specific modifiers.
+</Note>
+
+## Prometheus Metrics
+
+Gitaly exposes metrics via Prometheus for monitoring:
+
+- RPC request rates and latencies
+- Git command execution times
+- Repository access patterns
+- Resource consumption (CPU, memory, disk I/O)
+- Concurrency and rate limiting events
+
+### Backpressure Metrics
+
+Metrics provide visibility into how concurrency and rate limits are being applied. See the [backpressure configuration](/operations/backpressure) page for details on limit settings.
+
+For comprehensive metric details, refer to the [GitLab Documentation](https://docs.gitlab.com/ee/administration/gitaly/#monitor-gitaly-and-gitaly-cluster).
+
+## Ad-hoc Latency Analysis with ELK
+
+For more accurate latency percentiles than Prometheus exponential buckets provide:
+
+1. Go to [ELK](https://log.gitlab.net)
+2. Click 'Visualize'
+3. Search for `gitaly rpc latency example`
+4. Edit the query as needed for your analysis
+
+<Tip>
+Use ELK for detailed percentile analysis when Prometheus bucket sizes don't provide sufficient granularity.
+</Tip>
+
+## Distributed Tracing
+
+Gitaly supports distributed tracing through [LabKit](https://gitlab.com/gitlab-org/labkit/) using [OpenTracing APIs](https://opentracing.io).
+
+### Enabling Tracing
+
+By default, no tracing implementation is linked. Enable tracing by compiling with build tags:
+
+```bash
+make BUILD_TAGS="tracer_static tracer_static_jaeger"
+```
+
+### Supported Providers
+
+- **Jaeger** - Recommended for most deployments
+- Other OpenTracing-compatible providers via LabKit
+
+### Configuration
+
+Configure tracing via the `GITLAB_TRACING` environment variable:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+## Continuous Profiling
+
+Gitaly supports continuous profiling through [LabKit](https://gitlab.com/gitlab-org/labkit/) using [Stackdriver Profiler](https://cloud.google.com/profiler).
+
+For setup instructions, see the [LabKit monitoring documentation](https://gitlab.com/gitlab-org/labkit/-/blob/master/monitoring/doc.go).
+
+## Performance on GitLab.com
+
+To see real-time performance metrics from GitLab.com production:
+
+- [Gitaly Overview Dashboard](https://dashboards.gitlab.com/d/gitaly-main/gitaly-overview)
+- [Gitaly Features Overview](https://dashboards.gitlab.com/d/000000198/gitaly-features-overview)
+
+These dashboards show how Gitaly performs at scale with millions of repositories and users.

@@ -1,0 +1,329 @@
+---
+title: Authentication
+description: Configure authentication tokens and TLS certificates to secure your Gitaly server
+---
+
+Gitaly supports authentication using shared secrets (tokens) and TLS certificates to secure communication between clients and servers.
+
+## Token Authentication
+
+Token authentication uses a shared secret to authenticate requests to Gitaly. This is the recommended authentication method for most deployments.
+
+### Configuring Authentication Tokens
+
+<Steps>
+  <Step title="Generate a secure token">
+    Generate a secure random token. You can use OpenSSL or any secure random generator:
+    
+    ```bash
+    openssl rand -hex 32
+    ```
+    
+    This will output a 64-character hexadecimal string like:
+    ```
+    abc123def456789012345678901234567890abcdef1234567890abcdef123456
+    ```
+  </Step>
+
+  <Step title="Configure Gitaly server">
+    Add the authentication token to your Gitaly configuration file (`config.toml`):
+    
+    ```toml
+    [auth]
+    token = "abc123def456789012345678901234567890abcdef1234567890abcdef123456"
+    ```
+  </Step>
+
+  <Step title="Configure GitLab to use the token">
+    Update your GitLab configuration to include the same token. In your GitLab configuration:
+    
+    **For Omnibus installations**, edit `/etc/gitlab/gitlab.rb`:
+    ```ruby
+    gitlab_rails['gitaly_token'] = 'abc123def456789012345678901234567890abcdef1234567890abcdef123456'
+    ```
+    
+    **For source installations**, edit `config/gitlab.yml`:
+    ```yaml
+    production:
+      gitaly:
+        token: abc123def456789012345678901234567890abcdef1234567890abcdef123456
+    ```
+  </Step>
+
+  <Step title="Restart services">
+    Restart Gitaly and GitLab for the changes to take effect:
+    
+    ```bash
+    # Restart Gitaly
+    sudo gitlab-ctl restart gitaly
+    
+    # Restart GitLab
+    sudo gitlab-ctl restart
+    ```
+  </Step>
+</Steps>
+
+### Authentication Configuration Options
+
+<ParamField path="auth.token" type="string" required>
+  The shared secret token used to authenticate requests. This should be a long, random string.
+  
+  ```toml
+  [auth]
+  token = "abc123secret"
+  ```
+</ParamField>
+
+<ParamField path="auth.transitioning" type="boolean" default="false">
+  Set to `true` to temporarily allow unauthenticated requests while rolling out authentication. This is useful during deployment to avoid downtime.
+  
+  ```toml
+  [auth]
+  token = "abc123secret"
+  transitioning = true
+  ```
+  
+  <Warning>
+    Never leave `transitioning = true` in production permanently. This is only for migration purposes.
+  </Warning>
+</ParamField>
+
+## TLS Authentication
+
+For additional security, especially when Gitaly is accessed over TCP, you should configure TLS encryption.
+
+### Generating TLS Certificates
+
+<Steps>
+  <Step title="Generate a private key">
+    Create a private key for your Gitaly server:
+    
+    ```bash
+    openssl genrsa -out gitaly-key.pem 4096
+    ```
+  </Step>
+
+  <Step title="Generate a certificate signing request">
+    Create a CSR with your server details:
+    
+    ```bash
+    openssl req -new -key gitaly-key.pem -out gitaly.csr
+    ```
+    
+    Fill in the prompted information, ensuring the Common Name (CN) matches your server's hostname or IP.
+  </Step>
+
+  <Step title="Generate a self-signed certificate">
+    For development or internal use, generate a self-signed certificate:
+    
+    ```bash
+    openssl x509 -req -days 365 -in gitaly.csr -signkey gitaly-key.pem -out gitaly-cert.pem
+    ```
+    
+    <Note>
+      For production environments, obtain a certificate from a trusted Certificate Authority (CA).
+    </Note>
+  </Step>
+
+  <Step title="Set appropriate permissions">
+    Ensure the key file is readable only by the Gitaly user:
+    
+    ```bash
+    chmod 400 gitaly-key.pem
+    chown git:git gitaly-key.pem gitaly-cert.pem
+    ```
+  </Step>
+</Steps>
+
+### Configuring TLS
+
+Add TLS configuration to your Gitaly `config.toml`:
+
+```toml
+# Listen on TLS-enabled TCP socket
+tls_listen_addr = "0.0.0.0:8888"
+
+[tls]
+certificate_path = "/home/git/gitaly-cert.pem"
+key_path = "/home/git/gitaly-key.pem"
+```
+
+<ParamField path="tls_listen_addr" type="string">
+  The address and port where Gitaly listens for TLS connections.
+  
+  ```toml
+  tls_listen_addr = "localhost:8888"
+  ```
+</ParamField>
+
+<ParamField path="tls.certificate_path" type="string" required>
+  Path to the TLS certificate file.
+  
+  ```toml
+  [tls]
+  certificate_path = "/home/git/cert.cert"
+  ```
+</ParamField>
+
+<ParamField path="tls.key_path" type="string" required>
+  Path to the TLS private key file.
+  
+  ```toml
+  [tls]
+  key_path = "/home/git/key.pem"
+  ```
+</ParamField>
+
+## Configuring GitLab for TLS
+
+When using TLS, update your GitLab configuration to connect to Gitaly over TLS:
+
+**For Omnibus installations**, edit `/etc/gitlab/gitlab.rb`:
+
+```ruby
+gitaly['tls_enabled'] = true
+gitaly['certificate_path'] = "/path/to/gitaly-cert.pem"
+
+git_data_dirs({
+  'default' => {
+    'gitaly_address' => 'tls://gitaly.example.com:8888',
+    'gitaly_token' => 'your-token-here'
+  }
+})
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use strong tokens">
+    Always generate tokens with sufficient entropy. Use at least 32 bytes (64 hex characters) for production systems:
+    
+    ```bash
+    openssl rand -hex 32
+    ```
+  </Accordion>
+
+  <Accordion title="Rotate tokens regularly">
+    Implement a token rotation policy. Use the `transitioning` flag to enable a gradual rollout:
+    
+    1. Add new token with `transitioning = true`
+    2. Update all clients with the new token
+    3. Set `transitioning = false` once all clients are updated
+    4. Remove the old token
+  </Accordion>
+
+  <Accordion title="Use TLS for remote connections">
+    Always use TLS when Gitaly is accessed over a network. Token authentication alone does not encrypt traffic.
+  </Accordion>
+
+  <Accordion title="Restrict network access">
+    Use firewall rules to restrict access to Gitaly ports. Only allow connections from trusted GitLab application servers.
+  </Accordion>
+
+  <Accordion title="Secure file permissions">
+    Ensure configuration files containing tokens and TLS keys have restrictive permissions:
+    
+    ```bash
+    chmod 600 config.toml
+    chmod 400 gitaly-key.pem
+    chown git:git config.toml gitaly-key.pem
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor authentication failures">
+    Enable logging and monitor for authentication failures which may indicate unauthorized access attempts:
+    
+    ```toml
+    [logging]
+    level = "info"
+    format = "json"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Transitioning to Authenticated Mode
+
+If you're adding authentication to an existing Gitaly installation, use the transitioning mode to avoid downtime:
+
+<Steps>
+  <Step title="Enable transitioning mode">
+    Set `transitioning = true` in Gitaly's configuration:
+    
+    ```toml
+    [auth]
+    token = "your-new-token"
+    transitioning = true
+    ```
+    
+    Restart Gitaly. It will now accept both authenticated and unauthenticated requests.
+  </Step>
+
+  <Step title="Update all clients">
+    Update all GitLab instances and other Gitaly clients to use the new token.
+  </Step>
+
+  <Step title="Verify client connections">
+    Monitor logs to ensure all clients are successfully authenticating with the token.
+  </Step>
+
+  <Step title="Disable transitioning mode">
+    Once all clients are updated, set `transitioning = false`:
+    
+    ```toml
+    [auth]
+    token = "your-new-token"
+    transitioning = false
+    ```
+    
+    Restart Gitaly. Unauthenticated requests will now be rejected.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Authentication Failed Errors
+
+If you see authentication errors:
+
+1. **Verify token matches**: Ensure the token in Gitaly's config matches the token in GitLab's config
+2. **Check for whitespace**: Tokens should not have leading/trailing whitespace
+3. **Verify file permissions**: Ensure Gitaly can read its configuration file
+4. **Check logs**: Review Gitaly logs at the configured log directory
+
+### TLS Connection Errors
+
+If TLS connections fail:
+
+1. **Verify certificate paths**: Ensure certificate and key files exist and are readable
+2. **Check certificate validity**: Verify the certificate hasn't expired
+3. **Verify hostname**: The certificate's CN should match the hostname clients use to connect
+4. **Check firewall**: Ensure the TLS port (default 8888) is accessible
+
+### Testing Authentication
+
+You can test authentication using `grpcurl` (if available):
+
+```bash
+# Without TLS
+grpcurl -H "authorization: Bearer YOUR_TOKEN" \
+  -d '{"repository":{"storage_name":"default","relative_path":"test.git"}}' \
+  -plaintext localhost:9999 \
+  gitaly.ServerService/ServerInfo
+
+# With TLS
+grpcurl -H "authorization: Bearer YOUR_TOKEN" \
+  -d '{"repository":{"storage_name":"default","relative_path":"test.git"}}' \
+  localhost:8888 \
+  gitaly.ServerService/ServerInfo
+```
+
+## Related Configuration
+
+<CardGroup cols={2}>
+  <Card title="Configuration Reference" icon="gear" href="/setup/configuration">
+    View all Gitaly configuration options
+  </Card>
+  <Card title="Storage Configuration" icon="database" href="/setup/storage">
+    Configure Git repository storage
+  </Card>
+</CardGroup>

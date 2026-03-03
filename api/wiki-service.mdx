@@ -1,0 +1,228 @@
+---
+title: WikiService
+description: Service for managing Git-based wiki pages
+---
+
+The WikiService provides methods for creating, updating, and retrieving wiki pages stored in Git repositories.
+
+## WikiWritePage
+
+Creates a new wiki page.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the wiki. Only present in the first message.
+</ParamField>
+
+<ParamField path="name" type="bytes" required>
+  The name of the wiki page. Only present in the first message.
+</ParamField>
+
+<ParamField path="format" type="string" required>
+  The markup format of the page (e.g., "markdown", "rdoc", "asciidoc"). Only present in the first message.
+</ParamField>
+
+<ParamField path="commit_details" type="WikiCommitDetails" required>
+  Details about the commit to create. Only present in the first message.
+</ParamField>
+
+<ParamField path="content" type="bytes" required>
+  The content of the wiki page. Present in all messages (streamed for large pages).
+</ParamField>
+
+#### WikiCommitDetails
+
+<ParamField path="name" type="bytes">
+  Name of the author/committer
+</ParamField>
+
+<ParamField path="email" type="bytes">
+  Email of the author/committer
+</ParamField>
+
+<ParamField path="message" type="bytes">
+  Commit message
+</ParamField>
+
+<ParamField path="user_id" type="int32">
+  GitLab user ID
+</ParamField>
+
+<ParamField path="user_name" type="bytes">
+  GitLab username
+</ParamField>
+
+### Response
+
+<ResponseField name="duplicate_error" type="bytes">
+  Error message if a page with the same name already exists
+</ResponseField>
+
+## WikiUpdatePage
+
+Updates an existing wiki page.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the wiki. Only present in the first message.
+</ParamField>
+
+<ParamField path="page_path" type="bytes" required>
+  The path to the wiki page file. Only present in the first message.
+</ParamField>
+
+<ParamField path="title" type="bytes" required>
+  The new title for the page. Only present in the first message.
+</ParamField>
+
+<ParamField path="format" type="string" required>
+  The markup format of the page. Only present in the first message.
+</ParamField>
+
+<ParamField path="commit_details" type="WikiCommitDetails" required>
+  Details about the commit to create. Only present in the first message.
+</ParamField>
+
+<ParamField path="content" type="bytes" required>
+  The updated content of the wiki page. Present in all messages (streamed for large pages).
+</ParamField>
+
+### Response
+
+<ResponseField name="error" type="bytes">
+  Error message if the update failed
+</ResponseField>
+
+## WikiFindPage
+
+Finds and returns a wiki page. Returns a stream because the page's raw_data field may be arbitrarily large.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the wiki
+</ParamField>
+
+<ParamField path="title" type="bytes" required>
+  The title of the page to find
+</ParamField>
+
+<ParamField path="revision" type="bytes">
+  The Git revision to retrieve the page from
+</ParamField>
+
+<ParamField path="directory" type="bytes">
+  The directory to search within
+</ParamField>
+
+<ParamField path="skip_content" type="bool">
+  If true, prevents the content from being sent in the response
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="page" type="WikiPage">
+  The wiki page data
+</ResponseField>
+
+#### WikiPage
+
+<ResponseField name="version" type="WikiPageVersion">
+  Version information. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="format" type="string">
+  Markup format. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="title" type="bytes">
+  Page title. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="url_path" type="string">
+  URL path for the page. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="path" type="bytes">
+  File system path. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="name" type="bytes">
+  Page name. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="historical" type="bool">
+  Whether this is a historical version. Only present in the first message.
+</ResponseField>
+
+<ResponseField name="raw_data" type="bytes">
+  Page content data. Present in all messages of the stream.
+</ResponseField>
+
+## WikiGetAllPages
+
+Retrieves all wiki pages with optional sorting and limiting.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the wiki
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of pages to return. Passing 0 means no limit is applied.
+</ParamField>
+
+<ParamField path="direction_desc" type="bool">
+  If true, sort in descending order
+</ParamField>
+
+<ParamField path="sort" type="SortBy">
+  Field to sort by. Values: `TITLE`, `CREATED_AT`
+</ParamField>
+
+### Response (Stream)
+
+The response stream is a concatenation of WikiPage streams.
+
+<ResponseField name="page" type="WikiPage">
+  Wiki page data (see WikiPage structure above)
+</ResponseField>
+
+<ResponseField name="end_of_page" type="bool">
+  When true, signals a change of page for the next response message
+</ResponseField>
+
+## WikiListPages
+
+Lists wiki pages without their content, with pagination support.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the wiki
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of pages to return. Passing 0 means no limit is applied.
+</ParamField>
+
+<ParamField path="direction_desc" type="bool">
+  If true, sort in descending order
+</ParamField>
+
+<ParamField path="sort" type="SortBy">
+  Field to sort by. Values: `TITLE`, `CREATED_AT`
+</ParamField>
+
+<ParamField path="offset" type="uint32">
+  Number of pages to skip for pagination
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="page" type="WikiPage">
+  Wiki page data without content (see WikiPage structure above, but raw_data will be empty)
+</ResponseField>

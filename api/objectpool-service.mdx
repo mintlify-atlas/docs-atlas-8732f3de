@@ -1,0 +1,122 @@
+---
+title: ObjectPoolService
+description: Service for managing Git object pools
+---
+
+The ObjectPoolService provides methods for managing object pools, which allow multiple repositories to share objects and save disk space.
+
+## CreateObjectPool
+
+Creates an object pool from a repository. The client is responsible for linking repositories to this pool later.
+
+### Request
+
+<ParamField path="object_pool" type="ObjectPool" required>
+  The object pool to create
+</ParamField>
+
+<ParamField path="origin" type="Repository" required>
+  The source repository to create the pool from
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## DeleteObjectPool
+
+Removes the object pool directory from disk. The caller is responsible for unlinking all repositories from the pool before calling this RPC.
+
+### Request
+
+<ParamField path="object_pool" type="ObjectPool" required>
+  The object pool to delete
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## LinkRepositoryToObjectPool
+
+Links a repository to an object pool. Repositories are assumed to be stored on the same disk.
+
+### Request
+
+<ParamField path="object_pool" type="ObjectPool" required>
+  The object pool to link to
+</ParamField>
+
+<ParamField path="repository" type="Repository" required>
+  The repository to link to the pool
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## ReduplicateRepository
+
+Reduplicates objects from an object pool back into a repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to reduplicate objects into
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## DisconnectGitAlternates
+
+Disconnects a repository from its Git alternates (object pool).
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to disconnect from alternates
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## FetchIntoObjectPool
+
+Fetches objects from a repository into an object pool.
+
+### Request
+
+<ParamField path="origin" type="Repository" required>
+  The source repository to fetch from
+</ParamField>
+
+<ParamField path="object_pool" type="ObjectPool" required>
+  The object pool to fetch into
+</ParamField>
+
+<ParamField path="repack" type="bool">
+  Whether to repack the object pool after fetching
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## GetObjectPool
+
+Retrieves the object pool linked to a repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to get the object pool for
+</ParamField>
+
+### Response
+
+<ResponseField name="object_pool" type="ObjectPool">
+  The object pool linked to the repository, if any
+</ResponseField>

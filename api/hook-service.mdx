@@ -1,0 +1,202 @@
+---
+title: HookService
+description: Service for executing Git hooks
+---
+
+The HookService provides methods for executing various Git hooks during repository operations.
+
+## PreReceiveHook
+
+Executes the pre-receive hook before references are updated.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="environment_variables" type="string[]">
+  Environment variables to pass to the hook
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Data to pass to the hook via stdin
+</ParamField>
+
+<ParamField path="git_push_options" type="string[]">
+  Git push options to pass to the hook
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stdout" type="bytes">
+  Output from the hook's stdout
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Output from the hook's stderr
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  The exit status of the hook
+</ResponseField>
+
+## PostReceiveHook
+
+Executes the post-receive hook after references are updated.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="environment_variables" type="string[]">
+  Environment variables to pass to the hook
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Data to pass to the hook via stdin
+</ParamField>
+
+<ParamField path="git_push_options" type="string[]">
+  Git push options to pass to the hook
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stdout" type="bytes">
+  Output from the hook's stdout
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Output from the hook's stderr
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  The exit status of the hook
+</ResponseField>
+
+## UpdateHook
+
+Executes the update hook when a single reference is being updated.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="environment_variables" type="string[]">
+  Environment variables to pass to the hook
+</ParamField>
+
+<ParamField path="ref" type="bytes" required>
+  The reference being updated
+</ParamField>
+
+<ParamField path="old_value" type="string" required>
+  The old value of the reference
+</ParamField>
+
+<ParamField path="new_value" type="string" required>
+  The new value of the reference
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stdout" type="bytes">
+  Output from the hook's stdout
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Output from the hook's stderr
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  The exit status of the hook
+</ResponseField>
+
+## ReferenceTransactionHook
+
+Executes the reference-transaction hook during different phases of a reference transaction.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="environment_variables" type="string[]">
+  Environment variables to pass to the hook
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Data to pass to the hook via stdin
+</ParamField>
+
+<ParamField path="state" type="State" required>
+  The state of the reference transaction. Values: `PREPARED`, `COMMITTED`, `ABORTED`
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stdout" type="bytes">
+  Output from the hook's stdout
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Output from the hook's stderr
+</ResponseField>
+
+<ResponseField name="exit_status" type="ExitStatus">
+  The exit status of the hook
+</ResponseField>
+
+## PackObjectsHook
+
+<Warning>Deprecated. Use PackObjectsHookWithSidechannel instead. This method will be removed in version 15.0.</Warning>
+
+Executes the pack-objects hook.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="args" type="string[]">
+  Arguments passed to the pack-objects hook, without the leading "git"
+</ParamField>
+
+<ParamField path="stdin" type="bytes">
+  Data for consumption by git-pack-objects
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="stdout" type="bytes">
+  Packfile data
+</ResponseField>
+
+<ResponseField name="stderr" type="bytes">
+  Progress messages (such as "Enumerating objects ...")
+</ResponseField>
+
+## PackObjectsHookWithSidechannel
+
+Optimized version of PackObjectsHook that uses a Unix socket side channel for improved performance.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository where the hook is executed
+</ParamField>
+
+<ParamField path="args" type="string[]">
+  Arguments passed to the pack-objects hook, without the leading "git"
+</ParamField>
+
+### Response
+
+Empty response on success.

@@ -1,0 +1,359 @@
+---
+title: Storage Configuration
+description: Configure Git repository storage locations and manage multiple storage paths in Gitaly
+---
+
+Gitaly manages Git repositories stored on disk. This guide explains how to configure storage locations for your Git repositories.
+
+## Storage Overview
+
+Gitaly uses named storage locations to organize Git repositories. Each storage has:
+- A unique **name** used to reference it
+- A **path** pointing to the directory containing Git repositories
+
+Multiple storages allow you to distribute repositories across different disks or filesystems.
+
+## Basic Storage Configuration
+
+Storages are defined in the Gitaly configuration file using `[[storage]]` sections:
+
+```toml
+[[storage]]
+name = "default"
+path = "/home/git/repositories"
+```
+
+### Storage Parameters
+
+<ParamField path="storage.name" type="string" required>
+  Unique identifier for this storage. This name is used by GitLab to reference the storage.
+  
+  ```toml
+  [[storage]]
+  name = "default"
+  ```
+</ParamField>
+
+<ParamField path="storage.path" type="string" required>
+  Absolute path to the directory containing Git repositories. This directory must exist and be writable by the Gitaly user.
+  
+  ```toml
+  [[storage]]
+  path = "/home/git/repositories"
+  ```
+</ParamField>
+
+## Configuring Multiple Storages
+
+You can configure multiple storage locations by adding additional `[[storage]]` sections:
+
+```toml
+[[storage]]
+name = "default"
+path = "/home/git/repositories"
+
+[[storage]]
+name = "storage1"
+path = "/mnt/storage1/repositories"
+
+[[storage]]
+name = "storage2"
+path = "/mnt/storage2/repositories"
+```
+
+<Steps>
+  <Step title="Create storage directories">
+    Create the directories for each storage and set appropriate permissions:
+    
+    ```bash
+    sudo mkdir -p /mnt/storage1/repositories
+    sudo mkdir -p /mnt/storage2/repositories
+    sudo chown -R git:git /mnt/storage1/repositories
+    sudo chown -R git:git /mnt/storage2/repositories
+    ```
+  </Step>
+
+  <Step title="Add storage configuration">
+    Add each storage to your `config.toml`:
+    
+    ```toml
+    [[storage]]
+    name = "default"
+    path = "/home/git/repositories"
+    
+    [[storage]]
+    name = "storage1"
+    path = "/mnt/storage1/repositories"
+    ```
+  </Step>
+
+  <Step title="Configure GitLab">
+    Update your GitLab configuration to recognize the new storages.
+    
+    **For Omnibus installations**, edit `/etc/gitlab/gitlab.rb`:
+    ```ruby
+    git_data_dirs({
+      "default" => { "path" => "/home/git/repositories" },
+      "storage1" => { "path" => "/mnt/storage1/repositories" }
+    })
+    ```
+    
+    **For source installations**, edit `config/gitlab.yml`:
+    ```yaml
+    repositories:
+      storages:
+        default:
+          path: /home/git/repositories
+          gitaly_address: unix:/home/git/gitlab/tmp/sockets/private/gitaly.socket
+        storage1:
+          path: /mnt/storage1/repositories
+          gitaly_address: unix:/home/git/gitlab/tmp/sockets/private/gitaly.socket
+    ```
+  </Step>
+
+  <Step title="Restart services">
+    Restart Gitaly and GitLab:
+    
+    ```bash
+    sudo gitlab-ctl restart gitaly
+    sudo gitlab-ctl restart
+    ```
+  </Step>
+</Steps>
+
+## Storage Requirements
+
+### File System Requirements
+
+<AccordionGroup>
+  <Accordion title="Supported file systems">
+    Gitaly supports standard POSIX-compliant file systems:
+    - ext4 (recommended)
+    - XFS
+    - NFS (with caveats - see below)
+    
+    **Not recommended:**
+    - FUSE-based file systems
+    - Network file systems other than NFS
+  </Accordion>
+
+  <Accordion title="Permissions">
+    The storage directory must be:
+    - Owned by the Gitaly user (typically `git`)
+    - Have write permissions for the owner
+    - Have read and execute permissions for the owner
+    
+    ```bash
+    sudo chown -R git:git /home/git/repositories
+    sudo chmod -R 2770 /home/git/repositories
+    ```
+  </Accordion>
+
+  <Accordion title="Disk space">
+    Plan for adequate disk space:
+    - Git repositories can grow large over time
+    - Allow space for garbage collection temporary files
+    - Monitor disk usage regularly
+    
+    Recommended minimum: 50GB free space per storage
+  </Accordion>
+</AccordionGroup>
+
+### NFS Considerations
+
+<Warning>
+  GitLab has moved away from NFS for Git repository storage. Direct disk access is strongly recommended for performance and reliability.
+</Warning>
+
+If you must use NFS:
+
+1. **Use NFSv4** or later
+2. **Enable file locking** on the NFS server
+3. **Use hard mounts** (not soft mounts)
+4. **Disable atime updates** for performance:
+   ```
+   /mnt/nfs nfs4 defaults,hard,intr,noatime 0 0
+   ```
+5. **Monitor for stale file handles** which can cause issues
+
+## Storage Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use fast storage" icon="bolt">
+    Use SSD or NVMe drives for repository storage. Git operations are I/O intensive and benefit significantly from fast storage.
+  </Card>
+  
+  <Card title="Monitor disk usage" icon="chart-line">
+    Set up monitoring and alerting for disk space. Low disk space can cause repository corruption.
+  </Card>
+  
+  <Card title="Regular maintenance" icon="wrench">
+    Configure daily maintenance to keep repositories optimized:
+    
+    ```toml
+    [daily_maintenance]
+    start_hour = 2
+    start_minute = 0
+    duration = "2h"
+    storages = ["default", "storage1"]
+    ```
+  </Card>
+  
+  <Card title="Backup regularly" icon="floppy-disk">
+    Implement regular backups of all storage locations. Git repositories contain critical source code.
+  </Card>
+</CardGroup>
+
+## Storage Layout
+
+Gitaly stores repositories using GitLab's hashed storage format. The directory structure looks like:
+
+```
+/home/git/repositories/
+├── @hashed/
+│   ├── 6b/
+│   │   └── 86/
+│   │       └── 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b.git/
+│   └── d4/
+│       └── 73/
+│           └── d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35.git/
+└── @repositories/
+    └── (legacy storage location - being phased out)
+```
+
+### Hashed Storage Benefits
+
+- **Better distribution**: Repositories are evenly distributed across directories
+- **Improved performance**: Avoids issues with too many files in a single directory
+- **Easier backups**: Directory structure doesn't change when projects are renamed
+- **Scalability**: Handles millions of repositories efficiently
+
+<Note>
+  GitLab automatically uses hashed storage for all new repositories. Legacy storage is deprecated.
+</Note>
+
+## Configuring Storage in GitLab
+
+After configuring storage in Gitaly, you need to configure GitLab to use it:
+
+### Omnibus GitLab
+
+Edit `/etc/gitlab/gitlab.rb`:
+
+```ruby
+git_data_dirs({
+  "default" => {
+    "path" => "/home/git/repositories",
+    "gitaly_address" => "unix:/var/opt/gitlab/gitaly/gitaly.socket"
+  },
+  "storage1" => {
+    "path" => "/mnt/storage1/repositories",
+    "gitaly_address" => "unix:/var/opt/gitlab/gitaly/gitaly.socket"
+  }
+})
+```
+
+Then reconfigure:
+
+```bash
+sudo gitlab-ctl reconfigure
+```
+
+### Source Installation
+
+Edit `config/gitlab.yml`:
+
+```yaml
+production:
+  repositories:
+    storages:
+      default:
+        path: /home/git/repositories
+        gitaly_address: unix:/home/git/gitlab/tmp/sockets/private/gitaly.socket
+      storage1:
+        path: /mnt/storage1/repositories
+        gitaly_address: unix:/home/git/gitlab/tmp/sockets/private/gitaly.socket
+```
+
+## Verifying Storage Configuration
+
+After configuring storage, verify it's working:
+
+<Steps>
+  <Step title="Check Gitaly can access storage">
+    Verify Gitaly can read/write to the storage directories:
+    
+    ```bash
+    sudo -u git touch /home/git/repositories/test
+    sudo -u git rm /home/git/repositories/test
+    ```
+  </Step>
+
+  <Step title="Verify in GitLab Admin">
+    In GitLab, navigate to **Admin Area > Overview > Gitaly Servers** to see all configured storages and their health status.
+  </Step>
+
+  <Step title="Create a test repository">
+    Create a new project in GitLab and push a commit to verify the storage is working correctly.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Storage Not Found
+
+If GitLab reports a storage doesn't exist:
+
+1. Verify the storage name matches exactly in both Gitaly and GitLab configs
+2. Ensure the directory exists and has correct permissions
+3. Check Gitaly logs for errors: `/var/log/gitlab/gitaly/`
+4. Restart Gitaly and GitLab after configuration changes
+
+### Permission Denied Errors
+
+If you see permission errors:
+
+```bash
+# Check ownership
+ls -la /home/git/repositories
+
+# Fix ownership
+sudo chown -R git:git /home/git/repositories
+
+# Fix permissions
+sudo chmod -R 2770 /home/git/repositories
+```
+
+### Disk Space Issues
+
+If disk space is low:
+
+1. **Run garbage collection** on repositories to reclaim space
+2. **Check for large objects**: `git rev-list --objects --all | git cat-file --batch-check`
+3. **Review repository forks**: Forks consume storage
+4. **Enable daily maintenance** to keep repositories optimized
+
+## Migration Between Storages
+
+GitLab provides tools to migrate repositories between storages:
+
+```bash
+# Migrate a single project
+sudo gitlab-rake gitlab:storage:migrate_to_hashed[project_id,storage_name]
+
+# Migrate all projects from one storage to another
+sudo gitlab-rake gitlab:storage:migrate_to_hashed[*,target_storage]
+```
+
+Refer to the [GitLab documentation](https://docs.gitlab.com/ee/administration/repository_storage_paths.html) for detailed migration procedures.
+
+## Related Configuration
+
+<CardGroup cols={2}>
+  <Card title="Configuration Reference" icon="gear" href="/setup/configuration">
+    View all Gitaly configuration options
+  </Card>
+  <Card title="Daily Maintenance" icon="calendar" href="/setup/configuration#daily-maintenance">
+    Configure automatic repository optimization
+  </Card>
+</CardGroup>

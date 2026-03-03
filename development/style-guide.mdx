@@ -1,0 +1,349 @@
+---
+title: Style Guide
+description: Code style guidelines and best practices for Gitaly development
+---
+
+## Character Set
+
+### Avoid Non-ASCII Characters in Developer-Facing Code
+
+Code that is developer-facing only (variables, functions, test descriptions) should use the ASCII character set only. This ensures code is accessible to different developers with varying setups.
+
+## Errors
+
+### Use %w When Wrapping Errors
+
+Use `%w` when wrapping errors with context:
+
+```go
+fmt.Errorf("foo context: %w", err)
+```
+
+This allows the caller to inspect the wrapped error with [`errors.As`](https://golang.org/pkg/errors/#As) and [`errors.Is`](https://golang.org/pkg/errors/#Is). More info in the [blog post](https://blog.golang.org/go1.13-errors).
+
+### Keep Errors Short
+
+It is customary in Go to pass errors up the call stack and decorate them. To be a good neighbor to the rest of the call stack, keep errors short:
+
+```go
+// Good
+fmt.Errorf("peek diff line: %w", err)
+
+// Too long
+fmt.Errorf("ParseDiffOutput: Unexpected error while peeking: %w", err)
+```
+
+### Use Lower Case in Errors
+
+Use lower case in errors; it's OK to preserve upper case in names.
+
+### Errors Should Stick to the Facts
+
+It is tempting to write errors that explain the problem that occurred. This can be appropriate in some end-user facing situations, but it is never appropriate for internal error messages. When your interpretation is wrong, it puts the reader on the wrong track.
+
+Stick to the facts. Often it's enough to just describe in a few words what we were trying to do.
+
+### Use %q When Interpolating Strings
+
+Unless it would lead to incorrect results, always use `%q` when interpolating strings. The `%q` operator quotes strings and escapes spaces and non-printable characters, which can save a lot of debugging time.
+
+## Logging
+
+### Use Context-Based Logging
+
+The `ctxlogrus` package allows you to extract a logger from the current `context.Context` structure. This should be the default logging facility, as it may carry additional context-sensitive information like the `correlation_id` that makes it easy to correlate a log entry with other entries of the same event.
+
+### Logging Errors
+
+When logging an error, use the `WithError(err)` method.
+
+### Use the logrus.FieldLogger Interface
+
+When passing around the logger, use the `logrus.FieldLogger` interface instead of either `*logrus.Entry` or `*logrus.Logger`.
+
+### Use Snake Case for Fields
+
+When writing log entries, use `logger.WithFields()` to add relevant metadata. The keys should use snake case:
+
+```go
+logger.WithField("correlation_id", 12345).Info("StartTransaction")
+```
+
+### Use RPC Name as Log Message
+
+If you don't want to write a specific log message but only want to notify about a certain function or RPC being called, use the function's name as the log message:
+
+```go
+func StartTransaction(id uint64) {
+    logger.WithField("transaction_id", id).Debug("StartTransaction")
+}
+```
+
+### Embed Package into Log Entries
+
+To associate log entries with a given code package, add a `component` field to the log entry. If the log entry is generated in a method, the component should be `$PACKAGE_NAME.$STRUCT_NAME`:
+
+```go
+package transaction
+
+type Manager struct {}
+
+func (m Manager) StartTransaction(ctx context.Context) {
+    ctxlogrus.Extract(ctx).WithFields(logrus.Fields{
+        "component": "transaction.Manager",
+    }).Debug("StartTransaction")
+}
+```
+
+## Literals and Constructors
+
+### Use "Address of Struct" Instead of new
+
+The following are equivalent in Go:
+
+```go
+// Preferred
+foo := &Foo{}
+
+// Don't use
+foo := new(Foo)
+```
+
+There is no strong reason to prefer one over the other, but mixing them is unnecessary. We prefer the first style.
+
+### Use Hexadecimal Byte Literals in Strings
+
+When using a byte literal in a Go string, use a hexadecimal literal:
+
+```go
+// Preferred
+foo := "bar\x00baz"
+
+// Don't use octal
+foo := "bar\000baz"
+```
+
+Octal has the bad property that to represent high bytes, you need 3 digits, but then you may not use a `4` as the first digit. 0377 equals 255 (valid byte value), but 0400 equals 256 (not valid). With hexadecimal you cannot make this mistake because the largest two-digit hex number is 0xff which equals 255.
+
+## Functions
+
+### Method Receivers
+
+Without any good reason, methods should always use value receivers. Good reasons include (but are not limited to) performance/memory concerns or modification of state in the receiver. If any of the type's methods requires a pointer receiver, all methods should be pointer receivers.
+
+### Don't Use "Naked Return"
+
+In a function with named return variables, it is valid to have a plain ("naked") `return` statement, which will return the named return variables.
+
+In Gitaly we don't use this feature. If the function returns one or more values, always pass them to `return`.
+
+## Ordering
+
+### Declare Types Before Their First Use
+
+A type should be declared before its first use.
+
+## Tests
+
+### Naming
+
+Prefer to name tests in the same style as [examples](https://golang.org/pkg/testing/#hdr-Examples).
+
+To declare a test for the package, a function F, a type T, and method M on type T:
+
+```go
+func TestF() { ... }
+func TestT() { ... }
+func TestT_M() { ... }
+```
+
+A suffix may be appended to distinguish between test cases. The suffix must start with a lower-case letter and use camelCasing:
+
+```go
+func TestF_suffix() { ... }
+func TestT_suffix() { ... }
+func TestT_M_suffix() { ... }
+func TestT_M_suffixWithMultipleWords() { ... }
+```
+
+### Table-Driven Tests
+
+We like table-driven tests ([Table-driven tests using subtests](https://blog.golang.org/subtests#TOC_4.), [Cheney blog post](https://dave.cheney.net/2013/06/09/writing-table-driven-tests-in-go), [Golang wiki](https://github.com/golang/go/wiki/TableDrivenTests)).
+
+Use [subtests](https://blog.golang.org/subtests#TOC_4.) with your table-driven tests, using `t.Run`:
+
+```go
+func TestTime(t *testing.T) {
+    testCases := []struct {
+        gmt  string
+        loc  string
+        want string
+    }{
+        {"12:31", "Europe/Zuri", "13:31"},
+        {"12:31", "America/New_York", "7:31"},
+        {"08:08", "Australia/Sydney", "18:08"},
+    }
+    for _, tc := range testCases {
+        t.Run(fmt.Sprintf("%s in %s", tc.gmt, tc.loc), func(t *testing.T) {
+            loc, err := time.LoadLocation(tc.loc)
+            if err != nil {
+                t.Fatal("could not load location")
+            }
+            gmt, _ := time.Parse("15:04", tc.gmt)
+            if got := gmt.In(loc).Format("15:04"); got != tc.want {
+                t.Errorf("got %s; want %s", got, tc.want)
+            }
+        })
+    }
+}
+```
+
+### Fatal Exit
+
+Aborting test execution with any function which directly or indirectly calls `os.Exit()` should be avoided as this will cause any deferred function calls to not be executed. This includes any calls to `log.Fatal()` and related functions.
+
+### Common Setup
+
+The `TestMain()` function shouldn't do any package-specific setup. Instead, all tests are supposed to set up required state as part of the tests themselves. All `TestMain()` functions must call `testhelper.Run()` though, which performs the setup of global state required for tests.
+
+### TestMain Location
+
+If tests require a `TestMain()` function for common setup, this function should be implemented in a file called `testhelper_test.go`.
+
+## Black Box and White Box Testing
+
+The dominant style of testing in Gitaly is "white box" testing, meaning test functions for package `foo` declare their own package also to be `package foo`. This gives the test code access to package internals.
+
+Go also provides "black box" testing where test functions use `package foo_test` instead, which does not provide access to package internals.
+
+As a team we are currently divided on which style to prefer, so we allow both. In areas of the code where there is a clear pattern, please stick with the pattern. For example, almost all our service tests are white box.
+
+## Prometheus Metrics
+
+When adding new Prometheus metrics, follow the [best practices](https://prometheus.io/docs/practices/naming/) and be aware of the [gotchas](https://prometheus.io/docs/practices/instrumentation/#things-to-watch-out-for).
+
+## Git Commands
+
+Gitaly relies heavily on spawning git subprocesses to perform work. Any git commands spawned from Go code should use the constructs found in [`safecmd.go`](https://gitlab.com/gitlab-org/gitaly/-/blob/master/internal/git/safecmd.go).
+
+These constructs, all beginning with `Safe`, help prevent certain kinds of flag injection exploits. Proper usage is important to mitigate these injection risks:
+
+### Flag Usage Guidelines
+
+**Prefer long flags over short flags:**
+
+```go
+// Desired
+git.Flag{Name: "--long-flag"}
+
+// Undesired
+git.Flag{Name: "-L"}
+```
+
+**Include variables after an equal sign:**
+
+```go
+// Desired - prevents flag injection
+[]git.Flag{Name: "-a="+foo}
+
+// Undesired - allows flag injection
+[]git.Flag{Name: "-a"+foo}
+```
+
+**Always define flag names via constant:**
+
+```go
+// Desired
+[]git.Flag{Name: "-a"}
+
+// Undesired - ambiguous and difficult to audit
+[]git.Flag{Name: foo}
+```
+
+## Go Imports Style
+
+When adding new package dependencies to a source code file, keep all standard library packages in one contiguous import block, and all third party packages (which includes Gitaly packages) in another contiguous block. This way, the goimports tool will deterministically sort the packages which reduces noise in reviews.
+
+**Valid usage:**
+
+```go
+import (
+	"context"
+	"io"
+	"os/exec"
+
+	"gitlab.com/gitlab-org/gitaly/internal/command"
+	"gitlab.com/gitlab-org/gitaly/internal/git/alternates"
+	"gitlab.com/gitlab-org/gitaly/internal/git/repository"
+)
+```
+
+**Invalid usage:**
+
+```go
+import (
+	"io"
+	"os/exec"
+
+	"context"
+
+	"gitlab.com/gitlab-org/gitaly/internal/git/alternates"
+	"gitlab.com/gitlab-org/gitaly/internal/git/repository"
+
+	"gitlab.com/gitlab-org/gitaly/internal/command"
+)
+```
+
+## Goroutine Guidelines
+
+Gitaly is a long-lived process. This means that every goroutine spawned carries liability until either the goroutine ends or the program exits. Proper cleanup of goroutines is crucial to prevent leaks.
+
+### Is A Goroutine Necessary?
+
+Avoid using goroutines if the job at hand can be done just as easily and just as well without them.
+
+### Background Task Goroutines
+
+These are goroutines we expect to run the entire life of the process. If they crash, we expect them to be restarted. See [`dontpanic.GoForever`](https://pkg.go.dev/gitlab.com/gitlab-org/gitaly/internal/dontpanic?tab=doc#GoForever) for a useful function to handle goroutine restarts with Sentry observability.
+
+### RPC Goroutines
+
+These are goroutines created to help handle an RPC. A goroutine started during an RPC must also end when the RPC completes.
+
+#### Defer-Based Cleanup
+
+One of the safest ways to clean up goroutines is via deferred statements:
+
+```go
+func (scs SuperCoolService) MyAwesomeRPC(ctx context.Context, r Request) error {
+    done := make(chan struct{}) // signals the goroutine is done
+    defer func() { <-done }()   // wait until the goroutine is done
+
+    go func() {
+        defer close(done)  // signal when the goroutine returns
+        doWork(r)
+    }()
+
+    return nil
+}
+```
+
+Using defer statements means that cleanup will occur even if a panic bubbles up the call stack.
+
+### Goroutine Panic Risks
+
+Every new goroutine has the potential to crash the process. Any unrecovered panic can cause the entire process to crash and take out any in-flight requests. When writing code that creates a goroutine, consider using [`dontpanic.Go`](https://pkg.go.dev/gitlab.com/gitlab-org/gitaly/internal/dontpanic?tab=doc#Go) to handle panic recovery.
+
+### Limiting Goroutines
+
+When spawning goroutines, you should always be aware of how many goroutines you will be creating. While cheap, goroutines are not free.
+
+Consider:
+
+1. **How many goroutines will it take the task/RPC to complete?**
+   - Fixed number: Good
+   - Variable number: See next question
+
+2. **Does the goroutine count scale with a configuration value?**
+   - Yes: Good
+   - No: Red flag! An RPC where goroutines do not scale predictably will open the service to denial of service attacks

@@ -1,0 +1,215 @@
+---
+title: Architecture Overview
+description: Understanding Gitaly's architecture, design decisions, and how it scales Git operations horizontally
+---
+
+# Architecture Overview
+
+Gitaly provides a Git RPC layer that enables GitLab to scale Git operations horizontally by addressing the fundamental challenges of Git's architecture.
+
+## High-Level Architecture
+
+Gitaly sits between GitLab components and Git repositories, providing RPC-based access to Git operations:
+
+```
+GitLab Rails ──┐
+               ├──> Gitaly Server ──> Git Repositories
+GitLab Shell ──┤      (gRPC)              (Local Disk)
+               │
+Workhorse ─────┘
+```
+
+<Info>
+  View the [complete architecture diagram](https://docs.google.com/drawings/d/14-5NHGvsOVaAJZl2w7pIli8iDUqed2eIbvXdff5jneo/pub?w=2096&h=1536) for a detailed overview.
+</Info>
+
+## Why Git Needs Gitaly
+
+### Git's Scaling Challenges
+
+Git's architectural characteristics make it difficult to scale horizontally, similar to relational databases:
+
+<Warning>
+  **Challenging Git Characteristics**
+  
+  - **Stateful, ACID transactions** - Database-like workload with significant memory/CPU/disk IO
+  - **Process atomic transactions** - One commit must be coordinated by one and only one Git process
+  - **Atomic storage** - Assumes operations write to a single storage endpoint
+  - **Storage channel speeds** - Requires low latency, high bandwidth storage (near bus speeds)
+  - **Wide-ranging burst requirements** - Unpredictable spikes in memory, CPU, and disk IO
+</Warning>
+
+### Problematic Workloads
+
+These Git workloads are particularly challenging:
+
+- **Large, busy monorepos** - High commit volume with very large packs for full clones
+- **High commit volume repositories** - Frequent pack creation
+- **Binaries in Git** - Dense content that intensifies resource usage
+- **Full history cloning** - Expensive packfile creation
+
+### Impact on Infrastructure
+
+These characteristics create infrastructure challenges:
+
+- **Memory burstiness** - Makes containerization difficult due to strict container memory limits
+- **Disk IO burstiness** - Makes remote file systems (NFS) unreliable and prone to integrity issues
+- **CPU burstiness** - Complicates resource allocation in container environments
+
+<Note>
+  On GitLab.com, the P99 access time to create a `Rugged::Repository` object spiked over 30 seconds due to filesystem latency. This made Git operations essentially unusable, demonstrating the need for Gitaly.
+</Note>
+
+## Design Decisions
+
+### Core Architecture Choices
+
+<Steps>
+  <Step title="gRPC over HTTP+JSON">
+    Uses [gRPC](http://www.grpc.io/) for the RPC framework instead of HTTP+JSON. This provides a complete set of conventions and patterns, allowing faster development with protocol buffers for efficient serialization.
+  </Step>
+  
+  <Step title="High-Level Operations">
+    Gitaly exposes **high-level Git operations**, not low-level Git object/ref storage lookups. Many Git operations involve unbounded Git object lookups (e.g., diff generation depends on changed files). Making each lookup a remote procedure call is not feasible.
+  </Step>
+  
+  <Step title="Minimize gRPC Calls">
+    GitLab requests should use as few Gitaly gRPC calls as possible. It's better to move GitLab application logic into Gitaly to save gRPC round trips. Defining new gRPC calls is cheap when it saves round trips.
+  </Step>
+  
+  <Step title="Go for Performance">
+    Written primarily in Go for performance and resource efficiency. On gitlab-org/gitlab-ce, a single Gitaly Go process uses less than 3GB of memory and handles 90 requests per second, while gitaly-ruby processes use 20GB RSS for only 5 requests per second.
+  </Step>
+</Steps>
+
+### Protocol and Communication
+
+**Protocol Buffers**
+
+Gitaly uses [Google Protocol Buffers](https://developers.google.com/protocol-buffers) to define:
+- Available requests and required data
+- Response formats for each request
+- Service definitions
+
+Protocol definitions are located in `proto/*.proto` files.
+
+**Client Libraries**
+
+All protocol definitions and auto-generated gRPC client code live in the Gitaly repository. Client code is distributed as:
+- Ruby gem for gitlab-rails
+- Go package for gitlab-shell, gitlab-workhorse, gitaly-ssh
+- Client executables as needed
+
+### Storage and Caching
+
+<CardGroup cols={2}>
+  <Card title="Metadata Cache" icon="database">
+    Cached metadata is stored in Redis LRU for fast access to frequently used data
+  </Card>
+  
+  <Card title="Payload Cache" icon="file">
+    Cached payloads are stored in files since Redis can't efficiently store large objects
+  </Card>
+</CardGroup>
+
+### Networking
+
+- **Unix socket** for Git operations (eliminates need for early authentication)
+- **TCP** for monitoring and metrics
+- **No router needed** - GitLab already has logic for which storage server contains which repository
+
+## Gitaly Components
+
+### Gitaly Server
+
+The main Go server that:
+- Receives gRPC requests from GitLab components
+- Executes Git commands on local repositories
+- Controls access to the `git` binary
+- Manages resource limits and concurrency
+- Exports Prometheus metrics
+
+### Gitaly-Ruby
+
+A pool of Ruby helper processes used for:
+- Legacy GitLab application code too complex to rewrite in Go
+- Prototyping new features
+- RPCs that interact with multiple repositories (e.g., merging branches)
+
+<Warning>
+  Gitaly-ruby is **unsuitable** for slow RPCs or high-frequency calls. It should only be used for legacy code or prototyping.
+</Warning>
+
+## High Availability with Praefect
+
+Praefect provides high availability through asynchronous replication.
+
+### Praefect Responsibilities
+
+<Steps>
+  <Step title="Route Traffic">
+    Routes RPC traffic to the primary Gitaly server
+  </Step>
+  
+  <Step title="Track Changes">
+    Inspects RPC traffic and marks repositories as dirty if the RPC is a "mutator"
+  </Step>
+  
+  <Step title="Replicate">
+    Ensures dirty repositories have their changes replicated to secondary Gitaly servers
+  </Step>
+  
+  <Step title="Failover">
+    In the event of primary failure, demotes it to secondary and elects a new primary
+  </Step>
+</Steps>
+
+### Praefect State Management
+
+Praefect uses **PostgreSQL 9.6+** to store internal state:
+- Which repositories need replication
+- Which Gitaly server is the primary
+- Replication job queues
+
+## Performance Improvements
+
+Gitaly improves GitLab's Git performance through:
+
+1. **Centralized monitoring** - One place to observe and optimize Git operations
+2. **Intelligent caching** - Reduces expensive Git operations
+3. **Proximity to storage** - Moves Git operations close to disk to reduce latency
+4. **Elimination of NFS** - Removes unreliable remote filesystem layer
+
+## Distributed Tracing
+
+Gitaly supports distributed tracing through [LabKit](https://gitlab.com/gitlab-org/labkit/) using [OpenTracing APIs](https://opentracing.io).
+
+### Enabling Tracing
+
+Link tracing providers using build tags:
+
+```shell
+make BUILD_TAGS="tracer_static tracer_static_jaeger"
+```
+
+Configure via environment variable:
+
+```shell
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+## Continuous Profiling
+
+Gitaly supports Continuous Profiling through [LabKit](https://gitlab.com/gitlab-org/labkit/) using [Stackdriver Profiler](https://cloud.google.com/profiler).
+
+See the [LabKit monitoring documentation](https://gitlab.com/gitlab-org/labkit/-/blob/master/monitoring/doc.go) for setup instructions.
+
+## Design References
+
+Gitaly's design was influenced by:
+
+- [GitHub diff pages optimization](http://githubengineering.com/how-we-made-diff-pages-3x-faster/)
+- [Bitbucket adaptive throttling](https://developer.atlassian.com/blog/2016/12/bitbucket-adaptive-throttling/)
+- [GitHub Spokes architecture](http://githubengineering.com/building-resilience-in-spokes/)
+- [Git Pack Protocol](https://github.com/git/git/blob/master/Documentation/technical/pack-protocol.txt)
+- [Git Transfer Protocol internals](https://git-scm.com/book/en/v2/Git-Internals-Transfer-Protocols)

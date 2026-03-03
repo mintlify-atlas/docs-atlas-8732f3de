@@ -1,0 +1,84 @@
+---
+title: NamespaceService
+description: Service for managing repository namespaces on storage
+---
+
+The NamespaceService provides methods for managing namespaces (directories) on Gitaly storage.
+
+## AddNamespace
+
+Creates a new namespace directory on the specified storage.
+
+### Request
+
+<ParamField path="storage_name" type="string" required>
+  The name of the storage where the namespace will be created
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The name of the namespace to create
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## RemoveNamespace
+
+Removes an existing namespace directory from the specified storage.
+
+### Request
+
+<ParamField path="storage_name" type="string" required>
+  The name of the storage containing the namespace
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The name of the namespace to remove
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## RenameNamespace
+
+Renames a namespace directory on the specified storage.
+
+### Request
+
+<ParamField path="storage_name" type="string" required>
+  The name of the storage containing the namespace
+</ParamField>
+
+<ParamField path="from" type="string" required>
+  The current name of the namespace
+</ParamField>
+
+<ParamField path="to" type="string" required>
+  The new name for the namespace
+</ParamField>
+
+### Response
+
+Empty response on success.
+
+## NamespaceExists
+
+Checks whether a namespace exists on the specified storage.
+
+### Request
+
+<ParamField path="storage_name" type="string" required>
+  The name of the storage to check
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The name of the namespace to check
+</ParamField>
+
+### Response
+
+<ResponseField name="exists" type="bool">
+  True if the namespace exists, false otherwise
+</ResponseField>

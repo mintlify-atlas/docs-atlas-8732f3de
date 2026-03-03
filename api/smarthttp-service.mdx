@@ -1,0 +1,150 @@
+---
+title: SmartHTTPService
+description: Handle Git Smart HTTP protocol operations for clone, fetch, and push over HTTP
+---
+
+SmartHTTPService provides the server-side implementation of Git's Smart HTTP protocol, handling both upload-pack (fetch/clone) and receive-pack (push) operations.
+
+## InfoRefsUploadPack
+
+Provides the response body for `GET /info/refs?service=git-upload-pack`. Invoked when the user executes a `git fetch`, meaning the server will upload the packs to that user. The user doesn't upload new objects.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to fetch references from
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="bytes">
+  Raw reference data in git-upload-pack format (streamed)
+</ResponseField>
+
+## InfoRefsReceivePack
+
+Provides the response body for `GET /info/refs?service=git-receive-pack`. Invoked when the user executes a `git push`, but only advertises references to the user.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to advertise references for
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="bytes">
+  Raw reference data in git-receive-pack format (streamed)
+</ResponseField>
+
+## PostUploadPack
+
+Handles request and response body for `POST /upload-pack`. Used for git fetch and clone operations.
+
+**Streaming RPC**: Both request and response are streamed for handling large pack files.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to upload pack from. Should only be present in the first message
+</ParamField>
+
+<ParamField path="data" type="bytes">
+  Raw data to be copied to stdin of 'git upload-pack'
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="bytes">
+  Raw data from stdout of 'git upload-pack' (streamed)
+</ResponseField>
+
+## PostUploadPackWithSidechannel
+
+Handles request and response body for `POST /upload-pack` using the sidechannel protocol. This is a more efficient implementation for large data transfers.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to upload pack from
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+### Response
+
+<ResponseField name="(empty)">
+  Empty response. Data is transferred via sidechannel
+</ResponseField>
+
+## PostReceivePack
+
+Handles request and response body for `POST /receive-pack`. Used for git push operations.
+
+**Streaming RPC**: Both request and response are streamed for handling large pack files.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to receive pack into. Should only be present in the first message
+</ParamField>
+
+<ParamField path="data" type="bytes">
+  Raw data to be copied to stdin of 'git receive-pack'
+</ParamField>
+
+<ParamField path="gl_id" type="string">
+  GitLab user ID. Becomes env variable used by Git pre-receive and post-receive hooks. Should only be present in the first message
+</ParamField>
+
+<ParamField path="gl_repository" type="string">
+  GitLab repository identifier. Becomes env variable used by Git hooks. Should only be present in the first message
+</ParamField>
+
+<ParamField path="gl_username" type="string">
+  GitLab username. Becomes env variable used by Git hooks. Should only be present in the first message
+</ParamField>
+
+<ParamField path="git_protocol" type="string">
+  Git protocol version to use
+</ParamField>
+
+<ParamField path="git_config_options" type="string[]">
+  Parameters to use with git -c (key=value pairs)
+</ParamField>
+
+### Response
+
+<ResponseField name="data" type="bytes">
+  Raw data from stdout of 'git receive-pack' (streamed)
+</ResponseField>

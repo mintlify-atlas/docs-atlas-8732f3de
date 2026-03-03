@@ -1,0 +1,825 @@
+---
+title: "CommitService"
+description: "RPCs for commit-related operations including listing, searching, and analyzing commits"
+---
+
+The CommitService provides RPCs for working with Git commits. This includes listing commits, searching by various criteria, retrieving commit metadata, analyzing commit statistics, and working with signatures.
+
+## ListCommits
+
+Lists all commits reachable via a set of references by doing a graph walk. This deprecates FindAllCommits and FindCommits (except Follow is not yet supported).
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search for commits
+</ParamField>
+
+<ParamField path="revisions" type="string[]" required>
+  Set of revisions to walk. Accepts all notation as documented in gitrevisions(7) as well as the pseudo-revisions `--not` and `--all`. Must not be empty.
+</ParamField>
+
+<ParamField path="pagination_params" type="PaginationParameter">
+  Pagination configuration. The page token is the last commit OID that was sent (full object ID).
+</ParamField>
+
+<ParamField path="order" type="Order">
+  Order for traversing commits: NONE (reverse chronological), TOPO, or DATE
+</ParamField>
+
+<ParamField path="reverse" type="bool">
+  List all commits in reverse order
+</ParamField>
+
+<ParamField path="max_parents" type="uint32">
+  Skip commits with more than this many parents. If set to 1, all merge commits will be omitted. 0 means no filtering.
+</ParamField>
+
+<ParamField path="disable_walk" type="bool">
+  Disable graph walking. Only commits immediately referenced by revisions will be returned.
+</ParamField>
+
+<ParamField path="first_parent" type="bool">
+  Only follow the first-parent chain of commits
+</ParamField>
+
+<ParamField path="after" type="google.protobuf.Timestamp">
+  Only list commits more recent than this date
+</ParamField>
+
+<ParamField path="before" type="google.protobuf.Timestamp">
+  Only list commits older than this date
+</ParamField>
+
+<ParamField path="author" type="bytes">
+  Only list commits whose author matches this regular expression
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  List of commits found
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "revisions": ["main"],
+  "order": "TOPO",
+  "max_parents": 1,
+  "pagination_params": {
+    "limit": 100
+  }
+}
+```
+
+## ListAllCommits
+
+Lists all commits present in the repository, including those not reachable by any reference.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search for commits
+</ParamField>
+
+<ParamField path="pagination_params" type="PaginationParameter">
+  Pagination configuration. The page token is the last commit OID (full object ID).
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  List of commits found
+</ResponseField>
+
+## FindCommit
+
+Finds a single commit by revision.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision to find (commit ID, branch, tag, etc.)
+</ParamField>
+
+<ParamField path="trailers" type="bool">
+  Include commit trailers in the response
+</ParamField>
+
+### Response
+
+<ResponseField name="commit" type="GitCommit">
+  The commit found, or null if not found
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "revision": "main",
+  "trailers": true
+}
+```
+
+## CommitIsAncestor
+
+Checks if a commit is an ancestor of another commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check in
+</ParamField>
+
+<ParamField path="ancestor_id" type="string" required>
+  The potential ancestor commit ID
+</ParamField>
+
+<ParamField path="child_id" type="string" required>
+  The potential descendant commit ID
+</ParamField>
+
+### Response
+
+<ResponseField name="value" type="bool">
+  True if ancestor_id is an ancestor of child_id
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "ancestor_id": "abc123...",
+  "child_id": "def456..."
+}
+```
+
+## CountCommits
+
+Counts commits matching specific criteria.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to count commits in
+</ParamField>
+
+<ParamField path="revision" type="bytes">
+  Starting revision for counting
+</ParamField>
+
+<ParamField path="after" type="google.protobuf.Timestamp">
+  Only count commits after this date
+</ParamField>
+
+<ParamField path="before" type="google.protobuf.Timestamp">
+  Only count commits before this date
+</ParamField>
+
+<ParamField path="path" type="bytes">
+  Only count commits that touch this path
+</ParamField>
+
+<ParamField path="max_count" type="int32">
+  Maximum number of commits to count
+</ParamField>
+
+<ParamField path="all" type="bool">
+  Count all commits (mutually exclusive with revision)
+</ParamField>
+
+<ParamField path="first_parent" type="bool">
+  Only follow first-parent chain
+</ParamField>
+
+### Response
+
+<ResponseField name="count" type="int32">
+  Number of commits found
+</ResponseField>
+
+## CountDivergingCommits
+
+Counts how many commits differ between two references.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to analyze
+</ParamField>
+
+<ParamField path="from" type="bytes" required>
+  Starting reference
+</ParamField>
+
+<ParamField path="to" type="bytes" required>
+  Ending reference
+</ParamField>
+
+<ParamField path="max_count" type="int32">
+  Maximum count to return
+</ParamField>
+
+### Response
+
+<ResponseField name="left_count" type="int32">
+  Number of commits unique to the 'from' reference
+</ResponseField>
+
+<ResponseField name="right_count" type="int32">
+  Number of commits unique to the 'to' reference
+</ResponseField>
+
+## CommitStats
+
+Retrieves statistics about a commit (additions and deletions).
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository containing the commit
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The commit revision
+</ParamField>
+
+### Response
+
+<ResponseField name="oid" type="string">
+  The commit OID. Empty if not found.
+</ResponseField>
+
+<ResponseField name="additions" type="int32">
+  Number of lines added
+</ResponseField>
+
+<ResponseField name="deletions" type="int32">
+  Number of lines deleted
+</ResponseField>
+
+## TreeEntry
+
+Retrieves a tree entry (file or directory) at a specific path and revision.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  Commit ID or refname
+</ParamField>
+
+<ParamField path="path" type="bytes" required>
+  Entry path relative to repository root
+</ParamField>
+
+<ParamField path="limit" type="int64">
+  Maximum bytes to fetch. 0 means no limit. Remaining bytes are not sent if object is bigger.
+</ParamField>
+
+<ParamField path="max_size" type="int64">
+  Maximum allowed object size. Returns FailedPrecondition error if bigger. 0 means no limit.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="type" type="ObjectType">
+  COMMIT, BLOB, TREE, or TAG
+</ResponseField>
+
+<ResponseField name="oid" type="string">
+  SHA1 object ID
+</ResponseField>
+
+<ResponseField name="size" type="int64">
+  Size of the object in bytes
+</ResponseField>
+
+<ResponseField name="mode" type="int32">
+  File mode (e.g., 0644)
+</ResponseField>
+
+<ResponseField name="data" type="bytes">
+  Raw object contents (may span multiple messages)
+</ResponseField>
+
+## GetTreeEntries
+
+Retrieves tree entries from a specific path.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision to read from
+</ParamField>
+
+<ParamField path="path" type="bytes">
+  Path to list entries from (empty for root)
+</ParamField>
+
+<ParamField path="recursive" type="bool">
+  List entries recursively
+</ParamField>
+
+<ParamField path="sort" type="SortBy">
+  Sort order: DEFAULT or TREES_FIRST
+</ParamField>
+
+<ParamField path="pagination_params" type="PaginationParameter">
+  Pagination configuration
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="entries" type="TreeEntry[]">
+  Array of tree entries
+</ResponseField>
+
+<ResponseField name="entries[].oid" type="string">
+  Object ID this entry points to
+</ResponseField>
+
+<ResponseField name="entries[].path" type="bytes">
+  Path relative to repository root
+</ResponseField>
+
+<ResponseField name="entries[].type" type="EntryType">
+  BLOB, TREE, or COMMIT (submodule)
+</ResponseField>
+
+<ResponseField name="entries[].mode" type="int32">
+  File mode (e.g., 0644)
+</ResponseField>
+
+<ResponseField name="pagination_cursor" type="PaginationCursor">
+  Cursor for next page
+</ResponseField>
+
+## ListFiles
+
+Lists all files in a repository at a specific revision.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list files from
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision to list files at
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="paths" type="bytes[]">
+  Array of file paths
+</ResponseField>
+
+## FindAllCommits
+
+Finds all commits reachable from a specific revision.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="bytes">
+  Starting revision. If nil, returns all commits reachable by any branch.
+</ParamField>
+
+<ParamField path="max_count" type="int32">
+  Maximum number of commits to return
+</ParamField>
+
+<ParamField path="skip" type="int32">
+  Number of commits to skip
+</ParamField>
+
+<ParamField path="order" type="Order">
+  Sort order: NONE, TOPO, or DATE
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  Array of commits
+</ResponseField>
+
+## FindCommits
+
+Finds commits with various filtering options.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="bytes">
+  Starting revision
+</ParamField>
+
+<ParamField path="limit" type="int32">
+  Maximum number of commits to return
+</ParamField>
+
+<ParamField path="offset" type="int32">
+  Number of commits to skip
+</ParamField>
+
+<ParamField path="paths" type="bytes[]">
+  Only include commits that touch these paths
+</ParamField>
+
+<ParamField path="follow" type="bool">
+  Follow file renames
+</ParamField>
+
+<ParamField path="skip_merges" type="bool">
+  Skip merge commits
+</ParamField>
+
+<ParamField path="disable_walk" type="bool">
+  Disable graph walking
+</ParamField>
+
+<ParamField path="after" type="google.protobuf.Timestamp">
+  Only commits after this date
+</ParamField>
+
+<ParamField path="before" type="google.protobuf.Timestamp">
+  Only commits before this date
+</ParamField>
+
+<ParamField path="all" type="bool">
+  Search all references (mutually exclusive with revision)
+</ParamField>
+
+<ParamField path="first_parent" type="bool">
+  Only follow first-parent chain
+</ParamField>
+
+<ParamField path="author" type="bytes">
+  Filter by author pattern
+</ParamField>
+
+<ParamField path="order" type="Order">
+  Sort order: NONE or TOPO
+</ParamField>
+
+<ParamField path="trailers" type="bool">
+  Include commit trailers
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  Array of commits
+</ResponseField>
+
+## CommitLanguages
+
+Analyzes the programming languages used in a commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to analyze
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The commit revision to analyze
+</ParamField>
+
+### Response
+
+<ResponseField name="languages" type="Language[]">
+  Array of programming languages detected
+</ResponseField>
+
+<ResponseField name="languages[].name" type="string">
+  Name of the programming language
+</ResponseField>
+
+<ResponseField name="languages[].share" type="float">
+  Percentage share of this language (0.0 to 1.0)
+</ResponseField>
+
+<ResponseField name="languages[].color" type="string">
+  Display color for this language
+</ResponseField>
+
+<ResponseField name="languages[].file_count" type="uint32">
+  Number of files in this language
+</ResponseField>
+
+<ResponseField name="languages[].bytes" type="uint64">
+  Total bytes of code in this language
+</ResponseField>
+
+## RawBlame
+
+Retrieves git blame information for a file.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to blame from
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision to blame at
+</ParamField>
+
+<ParamField path="path" type="bytes" required>
+  The file path to blame
+</ParamField>
+
+<ParamField path="range" type="bytes">
+  Comma-separated range of line numbers (e.g., "1,1000"). Optional - if not provided, the whole file will be blamed.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="data" type="bytes">
+  Raw blame data
+</ResponseField>
+
+## LastCommitForPath
+
+Finds the last commit that modified a specific path.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="bytes" required>
+  The revision to search from
+</ParamField>
+
+<ParamField path="path" type="bytes" required>
+  The path to find the last commit for
+</ParamField>
+
+<ParamField path="literal_pathspec" type="bool">
+  Use literal pathspec (deprecated)
+</ParamField>
+
+### Response
+
+<ResponseField name="commit" type="GitCommit">
+  The last commit that modified the path, or null if not found
+</ResponseField>
+
+## ListLastCommitsForTree
+
+Lists the last commits for each entry in a tree.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="string" required>
+  The revision to search from
+</ParamField>
+
+<ParamField path="path" type="bytes">
+  The tree path (empty for root)
+</ParamField>
+
+<ParamField path="limit" type="int32">
+  Maximum number of results
+</ParamField>
+
+<ParamField path="offset" type="int32">
+  Number of results to skip
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="CommitForTree[]">
+  Array of commits for tree entries
+</ResponseField>
+
+<ResponseField name="commits[].commit" type="GitCommit">
+  The commit
+</ResponseField>
+
+<ResponseField name="commits[].path_bytes" type="bytes">
+  The path this commit modified
+</ResponseField>
+
+## CommitsByMessage
+
+Finds commits by searching commit messages.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="revision" type="bytes">
+  Starting revision
+</ParamField>
+
+<ParamField path="query" type="string" required>
+  Search query for commit messages
+</ParamField>
+
+<ParamField path="offset" type="int32">
+  Number of results to skip
+</ParamField>
+
+<ParamField path="limit" type="int32">
+  Maximum number of results
+</ParamField>
+
+<ParamField path="path" type="bytes">
+  Only search commits that touch this path
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  Array of commits matching the query
+</ResponseField>
+
+## ListCommitsByOid
+
+Lists commits by their object IDs.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="oid" type="string[]" required>
+  Array of commit object IDs
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commits" type="GitCommit[]">
+  Array of commits found
+</ResponseField>
+
+## ListCommitsByRefName
+
+Lists commits by reference names.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="ref_names" type="bytes[]" required>
+  Array of reference names
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commit_refs" type="CommitForRef[]">
+  Array of commits with their reference names
+</ResponseField>
+
+<ResponseField name="commit_refs[].commit" type="GitCommit">
+  The commit
+</ResponseField>
+
+<ResponseField name="commit_refs[].ref_name" type="bytes">
+  The reference name
+</ResponseField>
+
+## FilterShasWithSignatures
+
+Filters a list of commit SHAs to only those with signatures.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check
+</ParamField>
+
+<ParamField path="shas" type="bytes[]">
+  Array of commit SHAs to check
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="shas" type="bytes[]">
+  Array of SHAs that have signatures
+</ResponseField>
+
+## GetCommitSignatures
+
+Retrieves cryptographic signatures for commits.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="commit_ids" type="string[]" required>
+  Array of commit IDs
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commit_id" type="string">
+  The commit ID. Only present for a new commit signature.
+</ResponseField>
+
+<ResponseField name="signature" type="bytes">
+  The cryptographic signature
+</ResponseField>
+
+<ResponseField name="signed_text" type="bytes">
+  The text that was signed
+</ResponseField>
+
+## GetCommitMessages
+
+Retrieves commit messages for multiple commits.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve from
+</ParamField>
+
+<ParamField path="commit_ids" type="string[]" required>
+  Array of commit IDs
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="commit_id" type="string">
+  The commit ID. Only present for a new commit message.
+</ResponseField>
+
+<ResponseField name="message" type="bytes">
+  The commit message
+</ResponseField>
+
+## CheckObjectsExist
+
+Checks for the existence of revisions in a repository.
+
+### Request (Stream)
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check in
+</ParamField>
+
+<ParamField path="revisions" type="bytes[]">
+  Array of revisions to check. Accepts all revisions as documented in gitrevisions(7).
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="revisions" type="RevisionExistence[]">
+  Array of revision existence results
+</ResponseField>
+
+<ResponseField name="revisions[].name" type="bytes">
+  The revision name
+</ResponseField>
+
+<ResponseField name="revisions[].exists" type="bool">
+  Whether the revision exists
+</ResponseField>

@@ -1,0 +1,149 @@
+---
+title: gRPC API Overview
+description: Learn about Gitaly's gRPC API and how it handles Git operations for GitLab
+---
+
+Gitaly is a Git [RPC](https://en.wikipedia.org/wiki/Remote_procedure_call) service for handling all the git calls made by GitLab. It provides a high-performance gRPC interface that abstracts Git repository operations.
+
+## What is gRPC?
+
+gRPC is a modern, high-performance RPC framework that uses Protocol Buffers (protobuf) for serialization. Gitaly uses gRPC to provide a language-agnostic API that can be consumed by various GitLab components.
+
+## Protocol Buffers
+
+All Gitaly RPC methods are defined in `.proto` files located in the `proto/` directory. These files define:
+
+- **Services**: Collections of related RPC methods (e.g., `RepositoryService`, `CommitService`)
+- **Messages**: Request and response data structures
+- **Field types**: Data types and validation rules
+
+### Example Proto Definition
+
+Here's an example from the `RepositoryService`:
+
+```protobuf
+service RepositoryService {
+  rpc RepositoryExists(RepositoryExistsRequest) returns (RepositoryExistsResponse) {
+    option (op_type) = {
+      op: ACCESSOR
+    };
+  }
+
+  rpc CreateRepository(CreateRepositoryRequest) returns (CreateRepositoryResponse) {
+    option (op_type) = {
+      op: MUTATOR
+    };
+  }
+}
+
+message RepositoryExistsRequest {
+  Repository repository = 1 [(target_repository)=true];
+}
+
+message RepositoryExistsResponse {
+  bool exists = 1;
+}
+```
+
+## Available Services
+
+Gitaly organizes its API into multiple services, each handling a specific domain of Git operations:
+
+### Core Services
+
+- **RepositoryService** - Repository-level operations (create, delete, optimize, fetch)
+- **CommitService** - Commit queries and tree traversal
+- **RefService** - Reference (branch/tag) operations
+- **BlobService** - Blob content retrieval and LFS pointer management
+- **OperationService** - User-initiated mutations (merge, rebase, cherry-pick)
+
+### Specialized Services
+
+- **DiffService** - Compute and stream diffs between commits
+- **ConflictsService** - Detect and resolve merge conflicts
+- **RemoteService** - Interact with remote repositories
+- **SSHService** - Handle Git operations over SSH
+- **SmartHTTPService** - Handle Git operations over HTTP(S)
+- **HookService** - Execute and manage Git hooks
+- **CleanupService** - Repository maintenance and cleanup
+- **NamespaceService** - Manage repository namespaces
+- **ObjectPoolService** - Manage object pools for deduplication
+- **WikiService** - Wiki-specific operations
+
+### Infrastructure Services
+
+- **ServerService** - Server info and health checks
+- **PraefectService** - Gitaly Cluster coordination
+- **TransactionService** - Distributed transaction voting
+
+## Streaming RPCs
+
+Many Gitaly RPCs use gRPC streaming to handle large responses efficiently:
+
+```protobuf
+// Server streaming: returns multiple response messages
+rpc GetArchive(GetArchiveRequest) returns (stream GetArchiveResponse) {
+  option (op_type) = {
+    op: ACCESSOR
+  };
+}
+
+// Client streaming: accepts multiple request messages
+rpc UserCommitFiles(stream UserCommitFilesRequest) returns (UserCommitFilesResponse) {
+  option (op_type) = {
+    op: MUTATOR
+  };
+}
+
+// Bidirectional streaming: both request and response are streamed
+rpc UserMergeBranch(stream UserMergeBranchRequest) returns (stream UserMergeBranchResponse) {
+  option (op_type) = {
+    op: MUTATOR
+  };
+}
+```
+
+Streaming is particularly useful for:
+
+- **Large binary data** (archives, blobs)
+- **Paginated results** (commit lists, reference lists)
+- **Interactive operations** (merge with confirmation)
+
+## Gitaly Clients
+
+As of Q4 2018, the following GitLab components act as Gitaly clients:
+
+- **gitlab-rails**: The main GitLab Rails application
+- **gitlab-shell**: Handles `git clone`, `git push`, etc. via SSH
+- **gitlab-workhorse**: Handles `git clone` via HTTPS and serves raw Git data
+- **gitaly-ssh**: For internal Git data transfers between Gitaly servers
+- **gitaly-ruby**: For RPCs that interact with multiple repositories (e.g., merging branches)
+
+Clients written in Go use library code from the `gitlab.com/gitlab-org/gitaly/client` package.
+
+## Authentication and Metadata
+
+Gitaly uses gRPC metadata for:
+
+- **Authentication tokens**: Secure communication between clients and servers
+- **Praefect routing**: High-availability cluster coordination
+- **Transaction context**: Distributed transaction coordination
+- **User identity**: For authorization and audit logging
+
+## Error Handling
+
+Gitaly returns standard gRPC status codes along with detailed error messages. Some RPCs include structured error details in the response message for specific error conditions.
+
+Common error patterns:
+
+- `NotFound`: Resource (repository, reference, commit) doesn't exist
+- `InvalidArgument`: Invalid request parameters
+- `PermissionDenied`: Authorization check failed
+- `FailedPrecondition`: Operation cannot be performed (e.g., merge conflict)
+- `Internal`: Unexpected server error
+
+## Next Steps
+
+- Learn about [RPC Categories](/api/rpc-categories) (Accessor vs Mutator)
+- Explore the proto definitions in the `proto/` directory
+- Read about [High Availability](/ha/overview) with Praefect

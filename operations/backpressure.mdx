@@ -1,0 +1,158 @@
+---
+title: Backpressure Configuration
+description: Configure request limiting in Gitaly using concurrency queues and rate limiting to prevent resource exhaustion.
+---
+
+Gitaly provides backpressure mechanisms to prevent resource exhaustion when handling traffic surges. Instead of accepting more requests than it can handle, Gitaly can push back on clients through concurrency limits and rate limits.
+
+## Why Backpressure Matters
+
+Gitaly sits at the bottom of the GitLab stack for Git data access. All Git operations flow through Gitaly, making it vulnerable to:
+
+- Traffic surges that overwhelm system resources
+- Large repository operations that block other requests
+- Resource exhaustion from concurrent operations
+
+Backpressure allows Gitaly to gracefully reject requests it cannot handle, rather than degrading service for all users.
+
+## Concurrency Queue
+
+Limit the number of concurrent RPCs in flight per repository using the `[[concurrency]]` configuration.
+
+### Basic Configuration
+
+```toml
+[[concurrency]]
+rpc = "/gitaly.SmartHTTPService/PostUploadPackWithSidechannel"
+max_per_repo = 1
+```
+
+### How It Works
+
+With `max_per_repo = 1`:
+
+1. A clone request arrives for repository "A" (a large repository)
+2. While the first request executes, a second request for repository "A" arrives
+3. The second request blocks and waits in a queue
+4. When the first request completes, the second request proceeds
+
+### Queue Management
+
+To prevent unbounded memory usage from queued requests, configure queue limits:
+
+```toml
+[[concurrency]]
+rpc = "/gitaly.SmartHTTPService/PostUploadPackWithSidechannel"
+max_per_repo = 1
+max_queue_wait = "1m"
+max_queue_size = 5
+```
+
+#### Parameters
+
+<ParamField path="max_per_repo" type="integer">
+  Maximum number of concurrent requests per repository for this RPC
+</ParamField>
+
+<ParamField path="max_queue_wait" type="duration">
+  Maximum time a request can wait in the queue. Requests exceeding this time receive an error.
+</ParamField>
+
+<ParamField path="max_queue_size" type="integer">
+  Maximum number of requests that can wait in the queue. Additional requests are rejected immediately.
+</ParamField>
+
+## Rate Limiting
+
+Rate limiting restricts how frequently operations can run per repository using a token bucket algorithm.
+
+### Configuration
+
+```toml
+[[rate_limiting]]
+rpc = "/gitaly.RepositoryService/RepackFull"
+interval = "1m"
+burst = 1
+```
+
+### Token Bucket Algorithm
+
+The rate limiter uses a token bucket for each RPC per repository:
+
+1. The bucket has a capacity of `burst` tokens
+2. The bucket refills at the specified `interval`
+3. Each request consumes one token from the bucket
+4. When the bucket is empty, requests are rejected until it refills
+
+### Example
+
+With the configuration above:
+
+- The token bucket has a capacity of 1
+- It refills every minute
+- Gitaly accepts only 1 `RepackFull` request per repository per minute
+- Additional requests within that minute are rejected
+
+### Parameters
+
+<ParamField path="rpc" type="string" required>
+  The fully qualified RPC method name to rate limit
+</ParamField>
+
+<ParamField path="interval" type="duration" required>
+  How often the token bucket refills
+</ParamField>
+
+<ParamField path="burst" type="integer" required>
+  Token bucket capacity (number of requests allowed per interval)
+</ParamField>
+
+## Error Handling
+
+When limits are exceeded, Gitaly returns a structured gRPC `gitalypb.LimitError` containing:
+
+- **Message** - Human-readable error description
+- **BackoffDuration** - Suggested wait time before retrying (0 means don't retry)
+
+Gitaly clients (gitlab-shell, workhorse, Rails) parse these errors and display appropriate messages to:
+
+- Users cloning via HTTP or SSH
+- The GitLab web application
+- API consumers
+
+## Monitoring
+
+Prometheus metrics provide visibility into backpressure events:
+
+- Requests waiting in concurrency queues
+- Queue wait times
+- Rate limit rejections
+- Backoff durations
+
+See the [monitoring documentation](/operations/monitoring) for details on accessing these metrics.
+
+For comprehensive monitoring details, refer to the [GitLab Documentation](https://docs.gitlab.com/ee/administration/gitaly/#monitor-gitaly-and-gitaly-cluster).
+
+## Video Tutorial
+
+Watch [How to configure backpressure in Gitaly](https://youtu.be/wX9CtFdLYxE) for a detailed walkthrough of configuration options.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start with conservative limits">
+    Begin with stricter limits and gradually relax them based on monitoring data. It's easier to loosen restrictions than to recover from resource exhaustion.
+  </Accordion>
+
+  <Accordion title="Monitor queue metrics">
+    Track queue wait times and sizes to identify operations that need tuning. Consistently full queues indicate capacity issues.
+  </Accordion>
+
+  <Accordion title="Configure per-operation limits">
+    Different RPCs have different resource profiles. Expensive operations like RepackFull need stricter limits than lightweight operations.
+  </Accordion>
+
+  <Accordion title="Test backpressure behavior">
+    Verify that clients handle `LimitError` responses gracefully before deploying strict limits to production.
+  </Accordion>
+</AccordionGroup>

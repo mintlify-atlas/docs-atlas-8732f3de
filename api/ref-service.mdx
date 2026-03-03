@@ -1,0 +1,570 @@
+---
+title: "RefService"
+description: "RPCs for managing Git references including branches, tags, and symbolic refs"
+---
+
+The RefService provides RPCs for working with Git references (refs). This includes operations on branches, tags, and other references like finding, listing, creating, deleting, and querying reference information.
+
+## FindDefaultBranchName
+
+Finds the name of the default branch (typically "main" or "master").
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to query
+</ParamField>
+
+### Response
+
+<ResponseField name="name" type="bytes">
+  The name of the default branch (without "refs/heads/" prefix)
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  }
+}
+```
+
+## FindBranch
+
+Finds a branch by its unqualified name and returns the commit it points to.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="name" type="bytes" required>
+  Branch name only (without "refs/heads/" prefix)
+</ParamField>
+
+### Response
+
+<ResponseField name="branch" type="Branch">
+  The branch object, or null if not found
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "name": "main"
+}
+```
+
+## FindAllBranchNames
+
+Returns all branch names in the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list branches from
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="names" type="bytes[]">
+  Array of branch names
+</ResponseField>
+
+## FindLocalBranches
+
+Finds all local branches with detailed information.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list branches from
+</ParamField>
+
+<ParamField path="sort_by" type="SortBy">
+  Sort order: NAME, UPDATED_ASC, or UPDATED_DESC
+</ParamField>
+
+<ParamField path="pagination_params" type="PaginationParameter">
+  Pagination configuration. The page token is the branch name with "refs/heads/" prefix.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="branches" type="FindLocalBranchResponse[]">
+  Array of local branches
+</ResponseField>
+
+<ResponseField name="branches[].name" type="bytes">
+  Branch name
+</ResponseField>
+
+<ResponseField name="branches[].commit_id" type="string">
+  Commit ID the branch points to
+</ResponseField>
+
+<ResponseField name="branches[].commit_subject" type="bytes">
+  Subject line of the commit
+</ResponseField>
+
+<ResponseField name="branches[].commit_author" type="FindLocalBranchCommitAuthor">
+  Author of the commit
+</ResponseField>
+
+<ResponseField name="branches[].commit_committer" type="FindLocalBranchCommitAuthor">
+  Committer of the commit
+</ResponseField>
+
+<ResponseField name="branches[].commit" type="GitCommit">
+  Full commit object
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "sort_by": "UPDATED_DESC",
+  "pagination_params": {
+    "limit": 50
+  }
+}
+```
+
+## FindAllBranches
+
+Finds all branches, optionally filtered to only merged branches.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list branches from
+</ParamField>
+
+<ParamField path="merged_only" type="bool">
+  Only return branches merged into the root ref
+</ParamField>
+
+<ParamField path="merged_branches" type="bytes[]">
+  If merged_only is true, this is the list of branches to check
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="branches" type="Branch[]">
+  Array of branches
+</ResponseField>
+
+<ResponseField name="branches[].name" type="bytes">
+  Branch name
+</ResponseField>
+
+<ResponseField name="branches[].target" type="GitCommit">
+  Commit the branch points to
+</ResponseField>
+
+## FindTag
+
+Finds a specific tag by name.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="tag_name" type="bytes" required>
+  Name of the tag to find
+</ParamField>
+
+### Response
+
+<ResponseField name="tag" type="Tag">
+  The tag object, or null if not found
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "tag_name": "v1.0.0"
+}
+```
+
+## FindAllTagNames
+
+Returns all tag names in the repository.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list tags from
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="names" type="bytes[]">
+  Array of tag names
+</ResponseField>
+
+## FindAllTags
+
+Returns all tags in the repository with full tag objects.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list tags from
+</ParamField>
+
+<ParamField path="sort_by" type="SortBy">
+  Sort configuration with key (REFNAME or CREATORDATE) and direction
+</ParamField>
+
+<ParamField path="pagination_params" type="PaginationParameter">
+  Pagination configuration. The page token is the tag name with "refs/tags/" prefix.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="tags" type="Tag[]">
+  Array of tags
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "sort_by": {
+    "key": "CREATORDATE",
+    "direction": "DESCENDING"
+  },
+  "pagination_params": {
+    "limit": 100
+  }
+}
+```
+
+## FindAllRemoteBranches
+
+Finds all branches from a specific remote.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="remote_name" type="string" required>
+  Name of the remote
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="branches" type="Branch[]">
+  Array of remote branches
+</ResponseField>
+
+## RefExists
+
+Checks if a reference exists.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to check in
+</ParamField>
+
+<ParamField path="ref" type="bytes" required>
+  Fully qualified reference name (must start with "refs/")
+</ParamField>
+
+### Response
+
+<ResponseField name="value" type="bool">
+  True if the reference exists
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "ref": "refs/heads/feature-branch"
+}
+```
+
+## ListRefs
+
+Lists all references matching given patterns. Symbolic references are resolved to the object ID they point at.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to list refs from
+</ParamField>
+
+<ParamField path="patterns" type="bytes[]" required>
+  Patterns in the format accepted by git-for-each-ref(1). At least one pattern must be given. Non-matching patterns are silently ignored.
+</ParamField>
+
+<ParamField path="head" type="bool">
+  Whether to include the HEAD reference. By default, pseudo-refs are not included.
+</ParamField>
+
+<ParamField path="sort_by" type="SortBy">
+  Sort configuration with key (REFNAME, CREATORDATE, AUTHORDATE, or COMMITTERDATE) and direction
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="references" type="Reference[]">
+  Array of references found
+</ResponseField>
+
+<ResponseField name="references[].name" type="bytes">
+  Fully qualified name of the reference
+</ResponseField>
+
+<ResponseField name="references[].target" type="string">
+  Object ID the reference points to
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "patterns": ["refs/heads/*", "refs/tags/*"],
+  "head": true
+}
+```
+
+## FindRefsByOID
+
+Finds all fully qualified reference names that point to a specific object ID.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="oid" type="string" required>
+  Object ID to find references for (can be a prefix)
+</ParamField>
+
+<ParamField path="ref_patterns" type="string[]">
+  Patterns to filter references. Can be branch names, tag names, or fully qualified ref names. If empty, defaults to "refs/heads/" and "refs/tags/".
+</ParamField>
+
+<ParamField path="sort_field" type="string">
+  Sort field for results. If empty, defaults to "refname" (lexicographic order).
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of results. 0 means no limit.
+</ParamField>
+
+### Response
+
+<ResponseField name="refs" type="string[]">
+  Array of fully-qualified reference names
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "oid": "abc123def456",
+  "ref_patterns": ["refs/heads/*"],
+  "limit": 10
+}
+```
+
+## DeleteRefs
+
+Deletes multiple references.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to delete refs from
+</ParamField>
+
+<ParamField path="except_with_prefix" type="bytes[]">
+  Delete all refs except those with these prefixes (mutually exclusive with refs)
+</ParamField>
+
+<ParamField path="refs" type="bytes[]">
+  Specific refs to delete (mutually exclusive with except_with_prefix)
+</ParamField>
+
+### Response
+
+<ResponseField name="git_error" type="string">
+  Error message if the operation failed, empty on success
+</ResponseField>
+
+<Warning>
+This is a destructive operation. Use with caution.
+</Warning>
+
+## ListBranchNamesContainingCommit
+
+Lists all branch names that contain a specific commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="commit_id" type="string" required>
+  The commit ID to search for
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of branch names to return. 0 means return all.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="branch_names" type="bytes[]">
+  Array of branch names containing the commit
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "commit_id": "abc123def456...",
+  "limit": 50
+}
+```
+
+## ListTagNamesContainingCommit
+
+Lists all tag names that contain a specific commit.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to search in
+</ParamField>
+
+<ParamField path="commit_id" type="string" required>
+  The commit ID to search for
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Maximum number of tag names to return. 0 means return all.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="tag_names" type="bytes[]">
+  Array of tag names containing the commit
+</ResponseField>
+
+## GetTagSignatures
+
+Retrieves signatures for annotated tags. Revisions which don't resolve to an annotated tag are silently discarded. Tags which are annotated but not signed will return a response with no signature, but unsigned contents will still be returned.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve tag signatures from
+</ParamField>
+
+<ParamField path="tag_revisions" type="string[]" required>
+  Set of revisions to look up. Supports syntax as specified by gitrevisions(7). All revisions are expected to resolve to annotated tag objects. At least one revision must be provided.
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="signatures" type="TagSignature[]">
+  Array of tag signatures found
+</ResponseField>
+
+<ResponseField name="signatures[].tag_id" type="string">
+  Resolved object ID of the tag
+</ResponseField>
+
+<ResponseField name="signatures[].signature" type="bytes">
+  Cryptographic signature of the tag. Unset if the tag is not signed.
+</ResponseField>
+
+<ResponseField name="signatures[].content" type="bytes">
+  Contents which are signed by the signature. Includes both message and metadata.
+</ResponseField>
+
+### Example
+
+```json
+{
+  "repository": {
+    "storage_name": "default",
+    "relative_path": "@hashed/ab/cd/abcd1234.git"
+  },
+  "tag_revisions": ["v1.0.0", "v1.1.0"]
+}
+```
+
+## GetTagMessages
+
+Retrieves messages from annotated tags.
+
+### Request
+
+<ParamField path="repository" type="Repository" required>
+  The repository to retrieve tag messages from
+</ParamField>
+
+<ParamField path="tag_ids" type="string[]" required>
+  Array of tag IDs
+</ParamField>
+
+### Response (Stream)
+
+<ResponseField name="tag_id" type="string">
+  The tag ID. Only present for a new tag message.
+</ResponseField>
+
+<ResponseField name="message" type="bytes">
+  The tag message
+</ResponseField>

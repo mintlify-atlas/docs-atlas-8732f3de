@@ -1,0 +1,377 @@
+---
+title: Go Client Library
+description: Complete guide to using the Gitaly Go client library including connection management, authentication, pooling, and sidechannel operations
+---
+
+The Gitaly Go client library provides a robust interface for connecting to Gitaly servers from Go applications. It's located at `gitlab.com/gitlab-org/gitaly/v14/client`.
+
+## Installation
+
+Import the client package in your Go code:
+
+```go
+import (
+    "gitlab.com/gitlab-org/gitaly/v14/client"
+    gitalyauth "gitlab.com/gitlab-org/gitaly/v14/auth"
+    "gitlab.com/gitlab-org/gitaly/v14/proto/go/gitalypb"
+    "google.golang.org/grpc"
+)
+```
+
+## Basic Connection
+
+### Dial Function
+
+The simplest way to connect to Gitaly:
+
+```go
+import "gitlab.com/gitlab-org/gitaly/v14/client"
+
+// Connect with default options
+conn, err := client.Dial("unix:/path/to/gitaly.socket", nil)
+if err != nil {
+    log.Fatal(err)
+}
+defer conn.Close()
+
+// Create a service client
+repoService := gitalypb.NewRepositoryServiceClient(conn)
+```
+
+### DialContext
+
+For connections with context support:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+conn, err := client.DialContext(ctx, "tcp://gitaly.example.com:9999", nil)
+if err != nil {
+    log.Fatal(err)
+}
+defer conn.Close()
+```
+
+### Supported Address Formats
+
+- **Unix Socket**: `unix:/path/to/socket`
+- **TCP (insecure)**: `tcp://hostname:port`
+- **TLS**: `tls://hostname:port`
+
+The client automatically determines whether to use TLS based on the URL scheme.
+
+## Authentication
+
+Add authentication tokens to your connections:
+
+```go
+import gitalyauth "gitlab.com/gitlab-org/gitaly/v14/auth"
+
+token := "your-gitaly-token"
+
+opts := []grpc.DialOption{
+    grpc.WithPerRPCCredentials(gitalyauth.RPCCredentialsV2(token)),
+}
+
+conn, err := client.Dial("tls://gitaly.example.com:9999", opts)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+## Connection Pool
+
+The `Pool` type manages connections efficiently, reusing them based on address and token:
+
+```go
+import "gitlab.com/gitlab-org/gitaly/v14/client"
+
+// Create a new pool
+pool := client.NewPool()
+defer pool.Close()
+
+// Get or create a connection
+conn, err := pool.Dial(ctx, "unix:/path/to/gitaly.socket", "auth-token")
+if err != nil {
+    log.Fatal(err)
+}
+
+// The connection is managed by the pool - don't close it
+repoService := gitalypb.NewRepositoryServiceClient(conn)
+```
+
+### Pool with Custom Options
+
+```go
+import (
+    "gitlab.com/gitlab-org/gitaly/v14/client"
+    "google.golang.org/grpc"
+    "time"
+)
+
+dialOpts := []grpc.DialOption{
+    grpc.WithKeepaliveParams(keepalive.ClientParameters{
+        Time:    20 * time.Second,
+        Timeout: 10 * time.Second,
+    }),
+}
+
+pool := client.NewPoolWithOptions(
+    client.WithDialOptions(dialOpts...),
+)
+defer pool.Close()
+```
+
+## Advanced Connection Options
+
+### Health Check Dialer
+
+Wrap your dialer to perform health checks:
+
+```go
+import "gitlab.com/gitlab-org/gitaly/v14/client"
+
+baseDialer := client.DialContext
+healthCheckDialer := client.HealthCheckDialer(baseDialer)
+
+conn, err := healthCheckDialer(ctx, "unix:/path/to/gitaly.socket", nil)
+if err != nil {
+    // Connection failed or health check failed
+    log.Fatal(err)
+}
+```
+
+### Fail on Non-Temporary Errors
+
+For checking if a listener is ready:
+
+```go
+opts := client.FailOnNonTempDialError()
+conn, err := client.DialContext(ctx, address, opts)
+if err != nil {
+    // The remote listener is not accepting connections
+    log.Fatal(err)
+}
+```
+
+## Sidechannel Operations
+
+Sidechannels provide high-performance data transfer for Git operations.
+
+### Setting Up Sidechannel Registry
+
+```go
+import (
+    "github.com/sirupsen/logrus"
+    "gitlab.com/gitlab-org/gitaly/v14/client"
+)
+
+logger := logrus.NewEntry(logrus.StandardLogger())
+registry := client.NewSidechannelRegistry(logger)
+```
+
+### Dialing with Sidechannel Support
+
+```go
+conn, err := client.DialSidechannel(
+    ctx,
+    "unix:/path/to/gitaly.socket",
+    registry,
+    []grpc.DialOption{},
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer conn.Close()
+```
+
+### UploadPack (Git Fetch)
+
+Standard streaming approach:
+
+```go
+import (
+    "gitlab.com/gitlab-org/gitaly/v14/client"
+    "gitlab.com/gitlab-org/gitaly/v14/proto/go/gitalypb"
+)
+
+req := &gitalypb.SSHUploadPackRequest{
+    Repository: &gitalypb.Repository{
+        StorageName:  "default",
+        RelativePath: "path/to/repo.git",
+    },
+}
+
+exitCode, err := client.UploadPack(
+    ctx,
+    conn,
+    os.Stdin,   // stdin reader
+    os.Stdout,  // stdout writer
+    os.Stderr,  // stderr writer
+    req,
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### UploadPack with Sidechannel
+
+High-performance variant using sidechannels:
+
+```go
+registry := client.NewSidechannelRegistry(logger)
+
+conn, err := client.DialSidechannel(ctx, address, registry, nil)
+if err != nil {
+    log.Fatal(err)
+}
+defer conn.Close()
+
+req := &gitalypb.SSHUploadPackWithSidechannelRequest{
+    Repository: &gitalypb.Repository{
+        StorageName:  "default",
+        RelativePath: "path/to/repo.git",
+    },
+}
+
+exitCode, err := client.UploadPackWithSidechannel(
+    ctx,
+    conn,
+    registry,
+    os.Stdin,
+    os.Stdout,
+    os.Stderr,
+    req,
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### ReceivePack (Git Push)
+
+Proxy git-receive-pack sessions:
+
+```go
+req := &gitalypb.SSHReceivePackRequest{
+    Repository: &gitalypb.Repository{
+        StorageName:  "default",
+        RelativePath: "path/to/repo.git",
+    },
+    GlId:       "user-123",
+    GlUsername: "johndoe",
+}
+
+exitCode, err := client.ReceivePack(
+    ctx,
+    conn,
+    os.Stdin,
+    os.Stdout,
+    os.Stderr,
+    req,
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+## Complete Example
+
+Here's a complete example showing connection pooling and repository operations:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+
+    "gitlab.com/gitlab-org/gitaly/v14/client"
+    gitalyauth "gitlab.com/gitlab-org/gitaly/v14/auth"
+    "gitlab.com/gitlab-org/gitaly/v14/proto/go/gitalypb"
+    "google.golang.org/grpc"
+)
+
+func main() {
+    // Set up connection pool
+    pool := client.NewPool()
+    defer pool.Close()
+
+    // Connect with authentication
+    ctx := context.Background()
+    address := "unix:/var/opt/gitlab/gitaly/gitaly.socket"
+    token := "your-auth-token"
+
+    conn, err := pool.Dial(ctx, address, token)
+    if err != nil {
+        log.Fatalf("Failed to dial: %v", err)
+    }
+
+    // Create repository service client
+    repoService := gitalypb.NewRepositoryServiceClient(conn)
+
+    // Check if repository exists
+    req := &gitalypb.RepositoryExistsRequest{
+        Repository: &gitalypb.Repository{
+            StorageName:  "default",
+            RelativePath: "@hashed/ab/cd/abcd1234.git",
+        },
+    }
+
+    resp, err := repoService.RepositoryExists(ctx, req)
+    if err != nil {
+        log.Fatalf("Failed to check repository: %v", err)
+    }
+
+    if resp.Exists {
+        log.Println("Repository exists")
+    } else {
+        log.Println("Repository does not exist")
+    }
+}
+```
+
+## Connection Features
+
+The Go client automatically configures:
+
+- **Tracing**: OpenTracing and correlation ID propagation
+- **Keepalives**: TCP keepalive settings matching Gitaly's expectations
+- **TLS**: Automatic TLS handling based on URL scheme
+- **Interceptors**: Request/response interceptors for observability
+
+## Best Practices
+
+1. **Use Connection Pools**: Reuse connections with `Pool` instead of creating new connections
+2. **Handle Contexts**: Always pass context for timeout and cancellation support
+3. **Use Sidechannels**: For high-throughput operations like git fetch/push, use sidechannel variants
+4. **Close Pools**: Always defer `pool.Close()` to clean up connections
+5. **Don't Close Pool Connections**: Connections from pools are managed - never call `Close()` on them
+
+## API Reference
+
+### Key Types
+
+- `Pool`: Connection pool for managing reusable connections
+- `Dialer`: Function type for creating connections
+- `SidechannelRegistry`: Registry for sidechannel callbacks
+- `SidechannelConn`: Interface for reading/writing via sidechannel
+
+### Key Functions
+
+- `Dial(address, opts)`: Create a new connection
+- `DialContext(ctx, address, opts)`: Create connection with context
+- `DialSidechannel(ctx, address, registry, opts)`: Create sidechannel connection
+- `NewPool(opts)`: Create a connection pool
+- `HealthCheckDialer(dialer)`: Wrap dialer with health checks
+- `UploadPack`: Proxy git-upload-pack
+- `UploadPackWithSidechannel`: High-performance git-upload-pack
+- `ReceivePack`: Proxy git-receive-pack
+
+## Related Documentation
+
+- [Client Overview](/clients/overview)
+- [Ruby Client](/clients/ruby-client)
+- [Praefect Service API](/api/praefect-service)

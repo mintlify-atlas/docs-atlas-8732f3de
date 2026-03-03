@@ -1,0 +1,299 @@
+---
+title: Backup and Restore
+description: Use gitaly-backup to create and restore backups of Git repository data from Gitaly and Gitaly Cluster.
+---
+
+`gitaly-backup` is a command-line tool for creating and restoring backups of Git repository data from Gitaly and Gitaly Cluster.
+
+## Overview
+
+`gitaly-backup` supports:
+
+- Direct repository backups without requiring GitLab Rails
+- Streaming to local filesystem or object storage (S3, Azure Blob, GCS)
+- Parallel backup and restore operations
+- Full and incremental backups (incremental is experimental)
+- Multiple backup layouts for different use cases
+
+## Creating Backups
+
+### Step 1: Identify Repositories
+
+For each project to backup, find the Gitaly storage name and relative path using:
+
+- The [Admin area](https://docs.gitlab.com/ee/administration/repository_storage_types.html#from-project-name-to-hashed-path)
+- The [repository storage API](https://docs.gitlab.com/ee/api/projects.html#get-the-path-to-repository-storage)
+
+### Step 2: Create Backup Job File
+
+Generate a JSON file with one object per line for each repository to backup:
+
+```json
+{
+  "address":"unix:/var/opt/gitlab/gitaly.socket",
+  "token":"",
+  "storage_name":"default",
+  "relative_path":"@hashed/f5/ca/f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b.git",
+  "gl_project_path":"diaspora/diaspora-client"
+}
+{
+  "address":"unix:/var/opt/gitlab/gitaly.socket",
+  "token":"",
+  "storage_name":"default",
+  "relative_path":"@hashed/6b/86/6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b.git",
+  "gl_project_path":"brightbox/puppet"
+}
+```
+
+#### Job File Parameters
+
+<ParamField path="address" type="string" required>
+  Address of the Gitaly or Gitaly Cluster server
+</ParamField>
+
+<ParamField path="token" type="string" required>
+  Authentication token for the Gitaly server
+</ParamField>
+
+<ParamField path="storage_name" type="string" required>
+  Name of the storage where the repository is stored
+</ParamField>
+
+<ParamField path="relative_path" type="string" required>
+  Relative path of the repository
+</ParamField>
+
+<ParamField path="gl_project_path" type="string">
+  Name of the project (used for logging)
+</ParamField>
+
+### Step 3: Run Backup Command
+
+Pipe the job file to `gitaly-backup create`:
+
+```bash
+/opt/gitlab/embedded/bin/gitaly-backup create -path $BACKUP_DESTINATION_PATH < backup_job.json
+```
+
+#### Backup Command Options
+
+<ParamField path="-path" type="string" required>
+  Directory or object storage URL where backup files will be created
+</ParamField>
+
+<ParamField path="-parallel" type="integer">
+  Maximum number of parallel backups
+</ParamField>
+
+<ParamField path="-parallel-storage" type="integer">
+  Maximum number of parallel backups per storage
+</ParamField>
+
+<ParamField path="-id" type="string">
+  Unique identifier for the backup (determines backup path for full backups)
+</ParamField>
+
+<ParamField path="-layout" type="string" default="legacy">
+  Filesystem layout: `legacy` or `pointer` (experimental)
+</ParamField>
+
+<ParamField path="-incremental" type="boolean">
+  Create incremental backup (experimental, requires pointer layout)
+</ParamField>
+
+## Restoring Backups
+
+### Step 1: Identify Target Repositories
+
+For each project to restore, find the Gitaly storage name and relative path using:
+
+- The [Admin area](https://docs.gitlab.com/ee/administration/repository_storage_types.html#from-project-name-to-hashed-path)
+- The [repository storage API](https://docs.gitlab.com/ee/api/projects.html#get-the-path-to-repository-storage)
+
+### Step 2: Create Restore Job File
+
+Generate a JSON file with one object per line:
+
+```json
+{
+  "address":"unix:/var/opt/gitlab/gitaly.socket",
+  "token":"",
+  "storage_name":"default",
+  "relative_path":"@hashed/f5/ca/f5ca38f748a1d6eaf726b8a42fb575c3c71f1864a8143301782de13da2d9202b.git",
+  "gl_project_path":"diaspora/diaspora-client",
+  "always_create": true
+}
+{
+  "address":"unix:/var/opt/gitlab/gitaly.socket",
+  "token":"",
+  "storage_name":"default",
+  "relative_path":"@hashed/6b/86/6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b.git",
+  "gl_project_path":"brightbox/puppet"
+}
+```
+
+#### Restore Job File Parameters
+
+<ParamField path="always_create" type="boolean" default="false">
+  Create the repository even if no bundle exists (for compatibility with existing backups)
+</ParamField>
+
+Other parameters are the same as the backup job file.
+
+### Step 3: Run Restore Command
+
+Pipe the job file to `gitaly-backup restore`:
+
+```bash
+/opt/gitlab/embedded/bin/gitaly-backup restore -path $BACKUP_SOURCE_PATH < restore_job.json
+```
+
+#### Restore Command Options
+
+<ParamField path="-path" type="string" required>
+  Directory or object storage URL where backup files are stored
+</ParamField>
+
+<ParamField path="-parallel" type="integer">
+  Maximum number of parallel restores
+</ParamField>
+
+<ParamField path="-parallel-storage" type="integer">
+  Maximum number of parallel restores per storage
+</ParamField>
+
+<ParamField path="-layout" type="string" default="legacy">
+  Filesystem layout: `legacy` or `pointer`
+</ParamField>
+
+## Storage Backends
+
+### Local Filesystem
+
+Specify a local directory path:
+
+```bash
+gitaly-backup create -path /var/backups/gitaly < backup_job.json
+```
+
+### Object Storage
+
+`gitaly-backup` streams directly to object storage using [gocloud.dev/blob](https://pkg.go.dev/gocloud.dev/blob).
+
+#### Amazon S3
+
+```bash
+gitaly-backup create -path "s3://my-bucket?region=us-west-1" < backup_job.json
+```
+
+#### Azure Blob Storage
+
+```bash
+gitaly-backup create -path "azblob://my-container" < backup_job.json
+```
+
+#### Google Cloud Storage
+
+```bash
+gitaly-backup create -path "gs://my-bucket" < backup_job.json
+```
+
+## Backup Layouts
+
+The `-layout` flag determines how backup files are organized.
+
+### Legacy Layout
+
+The default layout, compatible with historic `backup.rake` repository backups.
+
+**Directory structure:**
+
+```text
+$BACKUP_DESTINATION_PATH/
+  @hashed/
+    4e/
+      c9/
+        4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a.bundle
+```
+
+**How it works:**
+
+- Creates a bundle with all references using `git bundle create repo.bundle --all`
+- Stores bundles in a directory structure based on repository relative path
+- Each backup recreates the entire directory structure
+- Does not support incremental backups
+
+### Pointer Layout
+
+<Warning>
+The pointer layout is experimental and not ready for production use.
+</Warning>
+
+Designed to support incremental backups without overwriting previous backups.
+
+**Directory structure:**
+
+```text
+$BACKUP_DESTINATION_PATH/
+  @hashed/
+    4e/
+      c9/
+        4ec9599fc203d176a301536c2e091a19bc852759b255bd6818810a42c5fed14a/
+          LATEST
+          20210930065413/
+            001.bundle
+            001.refs
+            LATEST
+```
+
+**How it works:**
+
+#### Full Backups
+
+1. Retrieves full reference list via `ListRefs` RPC, writes to `001.refs`
+2. Creates bundle from reference names: `awk '{print $2}' 001.refs | git bundle create repo.bundle --stdin`
+3. Writes `LATEST` pointer files to track current backup
+
+#### Incremental Backups
+
+1. Calculates next increment from `LATEST` file (e.g., `001` + `1` = `002`)
+2. Retrieves current reference list, writes to `002.refs`
+3. Reads previous increment references from `001.refs`
+4. Creates bundle with negated previous targets and new references:
+   ```bash
+   { awk '{print "^" $1}' 001.refs; awk '{print $2}' 002.refs; } | git bundle create repo.bundle --stdin
+   ```
+
+**Fallback behavior:** When `LATEST` pointers are not found, falls back to legacy layout.
+
+## Examples
+
+### Parallel Backup to S3
+
+```bash
+gitaly-backup create \
+  -path "s3://gitlab-backups?region=us-east-1" \
+  -parallel 10 \
+  -parallel-storage 5 \
+  < backup_job.json
+```
+
+### Incremental Backup with Pointer Layout
+
+```bash
+gitaly-backup create \
+  -path /var/backups/gitaly \
+  -layout pointer \
+  -incremental \
+  -id "20210930065413" \
+  < backup_job.json
+```
+
+### Restore from Azure Blob Storage
+
+```bash
+gitaly-backup restore \
+  -path "azblob://gitlab-backups" \
+  -parallel 8 \
+  < restore_job.json
+```

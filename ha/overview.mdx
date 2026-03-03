@@ -1,0 +1,122 @@
+---
+title: High Availability Overview
+description: Learn about Gitaly Cluster's high availability architecture and how it provides resilient Git operations through active-active replication.
+---
+
+# High Availability Overview
+
+Gitaly Cluster is an active-active cluster configuration that provides high availability for Git repository storage. It ensures resilient Git operations by replicating repository data across multiple Gitaly nodes.
+
+## Architecture
+
+The high-level design uses a reverse proxy approach to distribute requests across multiple storage nodes:
+
+![Gitaly HA Architecture](https://docs.google.com/drawings/d/e/2PACX-1vRl7WS-6RBOWxyLSBbBBAoV9MupmTh5vTqMOw_AX9axlboqkybTbFqGqExLyyYOilqEW3S9euXdBHzX/pub?w=960&h=720)
+
+### Key Components
+
+**Praefect** acts as a transparent front end to all Gitaly nodes:
+- Routes gRPC calls to the correct storage shard
+- Ensures write operations are performed transactionally when needed
+- Coordinates replication across multiple Gitaly nodes
+- Handles failover when primary nodes become unavailable
+
+**Gitaly Nodes** perform the actual Git operations:
+- Store repository data on local disk
+- Execute Git commands and RPC operations
+- Operate independently without knowledge of the cluster topology
+
+**PostgreSQL Database** stores Praefect's internal state:
+- Primary node assignments for each repository
+- Replication job queue
+- Node health information
+- Repository metadata
+
+<Note>
+The minimum supported PostgreSQL version is 9.6, consistent with the rest of GitLab.
+</Note>
+
+## Terminology
+
+**Shard**: A logical partition of storage for repositories. Each shard requires multiple Gitaly nodes (at least 3 for optimal availability) to maintain high availability.
+
+**Virtual Storage**: A cluster of Gitaly nodes that appear as a single storage to clients. Praefect manages routing requests to the appropriate nodes within a virtual storage.
+
+**Primary Node**: The authoritative Gitaly node for a repository. Write operations are directed to the primary, which then coordinates replication to secondary nodes.
+
+**Secondary Nodes**: Replica nodes that maintain copies of repository data. They serve read requests and can be promoted to primary during failover.
+
+**Replication**: The process of synchronizing repository changes from the primary node to secondary nodes to maintain consistency across the cluster.
+
+## Consistency Models
+
+Gitaly Cluster supports two consistency models:
+
+### Strong Consistency
+
+With strong consistency, all Gitaly nodes must agree before changes are committed:
+
+- Uses Git's reference-transaction hook to coordinate writes
+- All nodes vote on each reference update
+- Changes are only committed if quorum is reached
+- Provides immediate consistency guarantees
+- Default mode for transaction-aware RPCs
+
+<Note>
+Strong consistency requires Git version 2.28.0 or newer.
+</Note>
+
+### Eventual Consistency
+
+With eventual consistency, writes complete on the primary and replicate asynchronously:
+
+- Primary node accepts the write immediately
+- Replication jobs scheduled to update secondaries
+- Secondaries may lag behind primary temporarily
+- Used for non-transactional operations
+- Similar to how Geo replication works
+
+<Warning>
+With eventual consistency, replicas may be out of sync for seconds, minutes, or longer depending on repository activity and replication load.
+</Warning>
+
+## Benefits of High Availability
+
+**Fault Tolerance**: Gitaly Cluster continues operating even if individual nodes fail. Automatic failover promotes a healthy secondary to primary when needed.
+
+**Horizontal Scaling**: Distribute read load across multiple nodes. Add more nodes to a virtual storage to increase capacity.
+
+**Data Redundancy**: Multiple copies of each repository protect against data loss from hardware failures.
+
+**Zero Downtime**: Perform maintenance on individual nodes without interrupting service.
+
+## Comparison to Geo
+
+While both Gitaly Cluster and Geo involve replication, they serve different purposes:
+
+| Feature | Gitaly Cluster | Geo |
+|---------|----------------|-----|
+| **Primary Goal** | High availability | Disaster recovery |
+| **Consistency** | Strong or eventual | Eventual only |
+| **Failover** | Automatic | Manual coordination |
+| **Scope** | Single datacenter | Multiple datacenters |
+| **Data Replicated** | Git repositories only | All GitLab data |
+| **Latency Impact** | Low (same datacenter) | Higher (geographic distance) |
+
+<Note>
+Gitaly Cluster handles failure of individual Gitaly nodes, while Geo handles failure of entire datacenters.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Praefect" icon="gear" href="/ha/praefect">
+    Set up Praefect and configure virtual storage
+  </Card>
+  <Card title="Replication" icon="arrows-rotate" href="/ha/replication">
+    Learn how replication works in Gitaly Cluster
+  </Card>
+  <Card title="Failover" icon="shield" href="/ha/failover">
+    Configure automatic failover and recovery
+  </Card>
+</CardGroup>

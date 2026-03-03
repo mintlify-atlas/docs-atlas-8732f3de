@@ -1,0 +1,124 @@
+---
+title: Cgroups Configuration
+description: Configure Linux control groups (cgroups) in Gitaly to manage and limit resource consumption
+---
+
+Gitaly supports Linux control groups (cgroups) to manage and limit resource consumption for Git processes. This allows you to prevent individual Git operations from consuming excessive system resources and impacting other operations.
+
+## Configuration
+
+Cgroups are configured in the `config.toml` file. Here's the basic configuration structure:
+
+```toml
+[cgroups]
+count = 10
+mountpoint = "/sys/fs/cgroup"
+hierarchy_root = "gitaly"
+
+[cgroups.memory]
+enabled = true
+limit = 1048576
+
+[cgroups.cpu]
+enabled = true
+shares = 512
+```
+
+## Configuration Options
+
+### Main Cgroups Settings
+
+- **`count`**: Number of cgroup partitions to create. Gitaly will create this many cgroup slices to distribute Git processes across. Default: 10
+
+- **`mountpoint`**: The location where the cgroup filesystem is mounted. On most modern Linux systems, this is `/sys/fs/cgroup`. This should match your system's cgroup mount point.
+
+- **`hierarchy_root`**: The root name for Gitaly's cgroup hierarchy. Gitaly will create its cgroups under this name within the cgroup filesystem. Default: `"gitaly"`
+
+### Memory Control
+
+The `[cgroups.memory]` section configures memory limits for Git processes:
+
+- **`enabled`**: Set to `true` to enable memory limiting via cgroups. Default: `false`
+
+- **`limit`**: Memory limit in bytes for each cgroup partition. Git processes exceeding this limit may be terminated by the kernel's OOM killer.
+
+```toml
+[cgroups.memory]
+enabled = true
+limit = 1048576  # 1GB in bytes
+```
+
+### CPU Control
+
+The `[cgroups.cpu]` section configures CPU resource allocation:
+
+- **`enabled`**: Set to `true` to enable CPU limiting via cgroups. Default: `false`
+
+- **`shares`**: CPU shares allocated to each cgroup partition. This is a relative weight; higher values give processes more CPU time when there is contention. The default Linux value is 1024.
+
+```toml
+[cgroups.cpu]
+enabled = true
+shares = 512  # Half the default CPU shares
+```
+
+## How It Works
+
+When cgroups are enabled:
+
+1. Gitaly creates `count` number of cgroup partitions at startup
+2. Each Git process spawned by Gitaly is assigned to one of these cgroup partitions
+3. The Linux kernel enforces the resource limits defined in the cgroup configuration
+4. Processes are distributed across cgroup partitions to balance resource usage
+
+## Prerequisites
+
+- **Linux kernel with cgroup support**: Most modern Linux distributions include cgroup support by default
+- **Cgroup filesystem mounted**: Verify that cgroups are mounted at the specified `mountpoint`
+- **Appropriate permissions**: The Gitaly process must have permission to create and manage cgroups
+
+## Verifying Cgroup Setup
+
+You can verify that cgroups are working by checking the cgroup filesystem:
+
+```bash
+# Check if cgroups are mounted
+ls -la /sys/fs/cgroup/
+
+# Check Gitaly's cgroup hierarchy
+ls -la /sys/fs/cgroup/gitaly/
+
+# View memory limit for a specific cgroup
+cat /sys/fs/cgroup/gitaly/gitaly-0/memory.max
+```
+
+## Best Practices
+
+- **Start with conservative limits**: Begin with generous limits and tighten them based on your workload
+- **Monitor resource usage**: Use Gitaly's Prometheus metrics to monitor resource consumption before and after enabling cgroups
+- **Test in non-production first**: Test cgroup configurations in a staging environment before applying to production
+- **Consider your workload**: Repositories with large files or complex operations may require higher limits
+
+## Troubleshooting
+
+### Processes Being Killed
+
+If Git processes are being killed unexpectedly, check:
+
+1. System logs for OOM (Out of Memory) killer messages: `dmesg | grep -i oom`
+2. Whether memory limits are too restrictive for your workload
+3. Gitaly logs for cgroup-related errors
+
+### Cgroups Not Working
+
+If cgroups don't appear to be working:
+
+1. Verify cgroup filesystem is mounted: `mount | grep cgroup`
+2. Check Gitaly has permission to write to the cgroup mountpoint
+3. Ensure your Linux kernel supports cgroup v2 (recommended) or v1
+4. Check Gitaly logs for errors during startup
+
+## Further Reading
+
+- [Linux Control Groups Documentation](https://www.kernel.org/doc/Documentation/cgroup-v2.txt)
+- [Gitaly Configuration Reference](https://docs.gitlab.com/ee/administration/gitaly/reference.html)

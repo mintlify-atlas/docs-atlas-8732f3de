@@ -1,0 +1,230 @@
+---
+title: Distributed Tracing
+description: Configure distributed tracing in Gitaly using OpenTracing and various provider integrations
+---
+
+Gitaly supports distributed tracing through [LabKit](https://gitlab.com/gitlab-org/labkit/) using [OpenTracing APIs](https://opentracing.io). Distributed tracing allows you to track requests as they flow through your GitLab infrastructure, making it easier to diagnose performance issues and understand system behavior.
+
+## Overview
+
+Distributed tracing provides visibility into:
+
+- Request flow across GitLab components (GitLab Rails, Workhorse, Gitaly)
+- RPC call latencies and performance bottlenecks
+- Service dependencies and interaction patterns
+- Error propagation across services
+
+By default, no tracing implementation is linked into the Gitaly binary. You must explicitly compile Gitaly with support for your chosen tracing provider.
+
+## Supported Providers
+
+Gitaly can be compiled with support for various OpenTracing providers through LabKit, including:
+
+- **Jaeger** - Popular open-source tracing system
+- **Datadog** - Commercial APM and tracing platform
+- **Lightstep** - Commercial observability platform
+
+For the complete list of supported providers, see the [LabKit documentation](https://gitlab.com/gitlab-org/labkit/).
+
+## Building with Tracing Support
+
+To enable tracing, you must compile Gitaly with specific build tags. This is done using Go [build tags/constraints](https://golang.org/pkg/go/build/#hdr-Build_Constraints).
+
+### Jaeger Example
+
+To build Gitaly with Jaeger tracing support:
+
+```bash
+make BUILD_TAGS="tracer_static tracer_static_jaeger"
+```
+
+The build tags required are:
+
+- **`tracer_static`**: Enables static tracing support
+- **`tracer_static_jaeger`**: Links the Jaeger tracing implementation
+
+### Other Providers
+
+For other providers, replace `tracer_static_jaeger` with the appropriate build tag:
+
+```bash
+# Datadog
+make BUILD_TAGS="tracer_static tracer_static_datadog"
+
+# Lightstep
+make BUILD_TAGS="tracer_static tracer_static_lightstep"
+```
+
+Refer to the LabKit documentation for the exact build tags for each provider.
+
+## Runtime Configuration
+
+Once Gitaly is compiled with tracing support, you configure the tracing provider at runtime using the `GITLAB_TRACING` environment variable.
+
+### Configuration Format
+
+The `GITLAB_TRACING` environment variable uses a URL-like format:
+
+```
+GITLAB_TRACING=opentracing://<provider>?<parameters>
+```
+
+### Jaeger Configuration
+
+To configure Jaeger tracing when starting Gitaly:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+For more advanced Jaeger configuration:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger?sampler=const&sampler_param=1 ./gitaly config.toml
+```
+
+Common Jaeger parameters:
+
+- **`sampler`**: Sampling strategy (`const`, `probabilistic`, `ratelimiting`, `remote`)
+- **`sampler_param`**: Sampling parameter (e.g., `1` for 100% sampling)
+- **`udp_endpoint`**: Jaeger agent endpoint (default: `localhost:6831`)
+
+### Environment Variables
+
+You can also configure tracing using provider-specific environment variables. For Jaeger:
+
+```bash
+export GITLAB_TRACING=opentracing://jaeger
+export JAEGER_AGENT_HOST=localhost
+export JAEGER_AGENT_PORT=6831
+export JAEGER_SAMPLER_TYPE=const
+export JAEGER_SAMPLER_PARAM=1
+./gitaly config.toml
+```
+
+## Integration with GitLab Components
+
+For complete distributed tracing across your GitLab installation, you should enable tracing in all components:
+
+### Gitaly
+
+```bash
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+### Workhorse
+
+```bash
+GITLAB_TRACING=opentracing://jaeger ./gitlab-workhorse -config config.toml
+```
+
+### GitLab Rails
+
+Configure in `gitlab.yml`:
+
+```yaml
+production:
+  tracing:
+    connection_string: opentracing://jaeger
+    sampler: const
+    sampler_param: 1
+```
+
+## Verifying Tracing
+
+After configuring tracing:
+
+1. **Start your tracing backend** (e.g., Jaeger all-in-one container):
+
+```bash
+docker run -d --name jaeger \
+  -p 6831:6831/udp \
+  -p 16686:16686 \
+  jaegertracing/all-in-one:latest
+```
+
+2. **Restart Gitaly** with tracing enabled
+
+3. **Generate some traffic** by performing Git operations
+
+4. **View traces** in the Jaeger UI at `http://localhost:16686`
+
+## Sampling Strategies
+
+Distributed tracing can generate significant data volume. Use sampling to control overhead:
+
+### Constant Sampling
+
+Always sample (100%) or never sample (0%):
+
+```bash
+GITLAB_TRACING=opentracing://jaeger?sampler=const&sampler_param=1
+```
+
+- `sampler_param=1`: Sample all requests (100%)
+- `sampler_param=0`: Sample no requests (0%)
+
+### Probabilistic Sampling
+
+Sample a percentage of requests:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger?sampler=probabilistic&sampler_param=0.1
+```
+
+- `sampler_param=0.1`: Sample 10% of requests
+
+### Rate Limiting
+
+Sample up to N traces per second:
+
+```bash
+GITLAB_TRACING=opentracing://jaeger?sampler=ratelimiting&sampler_param=10
+```
+
+- `sampler_param=10`: Sample up to 10 traces per second
+
+## Performance Considerations
+
+- **Build-time inclusion**: Tracing code is only included if you build with the appropriate tags, so there's no overhead if not compiled in
+- **Runtime overhead**: Even with tracing compiled in, there's minimal overhead when `GITLAB_TRACING` is not set
+- **Sampling**: Use appropriate sampling rates to balance observability with performance
+- **Network traffic**: Traces are sent to the tracing backend over UDP (Jaeger) or HTTP, which adds network overhead
+
+## Troubleshooting
+
+### No Traces Appearing
+
+1. **Verify Gitaly was built with tracing support**:
+   ```bash
+   ./gitaly --version
+   # Should show build tags including tracer_static
+   ```
+
+2. **Check the `GITLAB_TRACING` environment variable is set**:
+   ```bash
+   echo $GITLAB_TRACING
+   ```
+
+3. **Verify the tracing backend is running and accessible**:
+   ```bash
+   # For Jaeger
+   nc -zvu localhost 6831
+   ```
+
+4. **Check Gitaly logs** for tracing initialization errors
+
+### Incomplete Traces
+
+If traces are missing spans from certain components:
+
+- Ensure all GitLab components (Rails, Workhorse, Gitaly) have tracing enabled
+- Verify all components are configured with the same tracing backend
+- Check that trace context is being propagated in HTTP/gRPC headers
+
+## Further Reading
+
+- [LabKit Monitoring Documentation](https://gitlab.com/gitlab-org/labkit/-/blob/master/monitoring/doc.go)
+- [OpenTracing Specification](https://opentracing.io/specification/)
+- [Jaeger Documentation](https://www.jaegertracing.io/docs/)
+- [GitLab Distributed Tracing Guide](https://docs.gitlab.com/ee/development/distributed_tracing.html)

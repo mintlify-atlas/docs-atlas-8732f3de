@@ -1,80 +1,396 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start Guide
+description: Get Gitaly up and running with installation, configuration, and testing instructions
 ---
 
-## Get started in three steps
+# Quick Start Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will help you get Gitaly up and running for development or testing purposes.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Most users won't install Gitaly separately - it's already included in your [GitLab installation](https://about.gitlab.com/install/).
 </Note>
+
+## Prerequisites
+
+### System Requirements
+
+- **Go**: Version 1.16 or 1.17
+- **Ruby**: Version 2.7
+- **Git**: Version 2.33.0 or newer
+- **Make**: For building the project
+
+### Optional Requirements
+
+- **PostgreSQL**: 9.6+ (required for Praefect high availability)
+- **Docker**: For running test databases
+
+## Installation
+
+<Steps>
+  <Step title="Clone the Repository">
+    If you're working with the GitLab Development Kit (GDK), Gitaly is already cloned at `/path/to/gdk/gitaly`.
+    
+    For standalone installation:
+    ```shell
+    git clone https://gitlab.com/gitlab-org/gitaly.git
+    cd gitaly
+    ```
+  </Step>
+  
+  <Step title="Build Gitaly">
+    Run `make` to download and compile Ruby dependencies, and compile the Gitaly Go executable:
+    
+    ```shell
+    make
+    ```
+    
+    This installs Gitaly into the `./_build/bin` directory.
+    
+    <Info>
+      To build with distributed tracing support: `make BUILD_TAGS="tracer_static tracer_static_jaeger"`
+    </Info>
+  </Step>
+  
+  <Step title="Create Configuration File">
+    Copy the example configuration file and customize it for your environment:
+    
+    ```shell
+    cp config.toml.example config.toml
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+### Basic Configuration
+
+Edit your `config.toml` file with the minimum required settings:
+
+```toml
+# Socket path for Gitaly to listen on
+socket_path = "/home/git/gitlab/tmp/sockets/private/gitaly.socket"
+
+# Directory where Gitaly's executables are stored
+bin_dir = "/home/git/gitaly/_build/bin"
+
+# Configure at least one storage
+[[storage]]
+name = "default"
+path = "/home/git/repositories"
+```
+
+<Warning>
+  The storage `path` must point to a directory where Git repositories will be stored. This directory must exist and be writable by the Gitaly process.
+</Warning>
+
+### Advanced Configuration Options
+
+#### Authentication
+
+Enable token-based authentication:
+
+```toml
+[auth]
+token = 'abc123secret'
+transitioning = false  # Set to true to temporarily allow unauthenticated requests
+```
+
+#### Network Listeners
+
+Configure TCP and TLS listeners:
+
+```toml
+# Listen on TCP (insecure - no authentication)
+listen_addr = "localhost:9999"
+
+# Listen on TLS
+tls_listen_addr = "localhost:8888"
+
+[tls]
+certificate_path = '/home/git/cert.cert'
+key_path = '/home/git/key.pem'
+```
+
+#### Prometheus Metrics
+
+Export metrics for monitoring:
+
+```toml
+prometheus_listen_addr = "localhost:9236"
+
+[prometheus]
+grpc_latency_buckets = [0.001, 0.005, 0.025, 0.1, 0.5, 1.0, 10.0, 30.0, 60.0, 300.0, 1500.0]
+```
+
+#### Git Configuration
+
+Customize Git binary location and settings:
+
+```toml
+[git]
+bin_path = "/usr/bin/git"
+catfile_cache_size = 100
+
+[[git.config]]
+key = "fetch.fsckObjects"
+value = "true"
+```
+
+#### Logging
+
+Configure logging output:
+
+```toml
+[logging]
+dir = "/home/git/gitlab/log"
+format = "json"
+level = "info"  # One of: debug, info, warn, error, fatal, panic
+
+# Optional: Report exceptions to Sentry
+sentry_dsn = "https://<key>:<secret>@sentry.io/<project>"
+ruby_sentry_dsn = "https://<key>:<secret>@sentry.io/<project>"
+```
+
+#### Gitaly-Ruby Configuration
+
+```toml
+[gitaly-ruby]
+dir = "/home/git/gitaly/ruby"
+num_workers = 2
+max_rss = 200000000  # Memory limit in bytes
+graceful_restart_timeout = "10m"
+restart_delay = "5m"
+```
+
+#### Concurrency Control
+
+Limit concurrent operations per RPC:
+
+```toml
+[[concurrency]]
+rpc = "/gitaly.RepositoryService/GarbageCollect"
+max_per_repo = 1
+max_queue_wait = "1m"
+max_queue_size = 10
+```
+
+#### Rate Limiting
+
+Control request rates:
+
+```toml
+[[rate_limiting]]
+rpc = "/gitaly.SmartHTTPService/PostUploadPackWithSidechannel"
+interval = "1m"
+burst = 5
+```
+
+#### Daily Maintenance
+
+Schedule optimization tasks:
+
+```toml
+[daily_maintenance]
+start_hour = 23
+start_minute = 30
+duration = "45m"
+storages = ["default"]
+disabled = false
+```
+
+#### Multiple Storages
+
+Configure multiple storage locations:
+
+```toml
+[[storage]]
+name = "default"
+path = "/home/git/repositories"
+
+[[storage]]
+name = "other_storage"
+path = "/mnt/other_storage/repositories"
+```
+
+## Running Gitaly
+
+### Start Gitaly
+
+Run Gitaly with your configuration file:
+
+```shell
+./gitaly config.toml
+```
+
+### With Distributed Tracing
+
+If compiled with tracing support:
+
+```shell
+GITLAB_TRACING=opentracing://jaeger ./gitaly config.toml
+```
+
+### In GitLab Development Kit
+
+If using GDK, restart Gitaly after making changes:
+
+```shell
+cd /path/to/gdk
+make gitaly-setup
+gdk restart gitaly
+```
+
+<Info>
+  To prevent GDK from overwriting your Gitaly checkout, add to `/path/to/gdk/gdk.yml`:
+  
+  ```yaml
+  gitaly:
+    auto_update: false
+  ```
+</Info>
+
+## Testing Your Installation
+
+### Verify Gitaly is Running
+
+Check that Gitaly is listening on the configured socket:
+
+```shell
+ls -l /home/git/gitlab/tmp/sockets/private/gitaly.socket
+```
+
+### Check Logs
+
+Monitor Gitaly logs for errors:
+
+```shell
+tail -f /home/git/gitlab/log/gitaly.log
+```
+
+### Test with GitLab
+
+If integrated with GitLab, test Git operations:
+
+```shell
+# Clone a repository via HTTP
+git clone http://localhost:3000/root/test-project.git
+
+# Clone via SSH
+git clone git@localhost:root/test-project.git
+```
+
+## Development Workflow
+
+### Building and Testing
+
+<Steps>
+  <Step title="Build the Project">
+    ```shell
+    make build
+    ```
+  </Step>
+  
+  <Step title="Prepare Test Repositories">
+    ```shell
+    make prepare-tests
+    ```
+  </Step>
+  
+  <Step title="Run Tests">
+    For Praefect tests, start a PostgreSQL database:
+    
+    ```shell
+    docker rm -f $(docker ps -q --all -f name=praefect-pg) > /dev/null 2>&1
+    docker run --name praefect-pg -p 5432:5432 \
+      -e POSTGRES_HOST_AUTH_METHOD=trust -d postgres:12.6
+    ```
+    
+    Run the full test suite:
+    
+    ```shell
+    make test
+    ```
+    
+    Run specific tests:
+    
+    ```shell
+    TEST_PACKAGES=./internal/gitaly/service/repository \
+    TEST_OPTIONS="-count=1 -run=TestRepositoryExists" \
+    make test-go
+    ```
+  </Step>
+  
+  <Step title="Clean Build Artifacts">
+    ```shell
+    make clean
+    ```
+  </Step>
+</Steps>
+
+### Makefile Targets
+
+Common make targets:
+
+- `make build` - Build Gitaly without installing
+- `make install` - Build and install Gitaly (modify `PREFIX` to change destination)
+- `make test` - Execute both Go and Ruby tests
+- `make proto` - Generate server and client code from protocol definitions
+- `make clean` - Remove all generated build artifacts
+
+### Configuration Persistence
+
+Create a `config.mak` file next to the Makefile to persist build variables:
+
+```makefile
+# config.mak
+V=1  # Verbose build
+PROTOC_VERSION=3.17.3
+BUILD_TAGS=tracer_static tracer_static_jaeger
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Learn about Gitaly's design and architecture decisions
+  </Card>
+  
+  <Card title="Configuration Reference" icon="gear" href="/configuration">
+    Explore all configuration options in detail
+  </Card>
+  
+  <Card title="High Availability" icon="server" href="/high-availability">
+    Set up Praefect for HA and replication
+  </Card>
+  
+  <Card title="Contributing" icon="code-pull-request" href="/contributing">
+    Learn how to contribute to Gitaly development
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+**Gitaly fails to start**
+- Check that the socket directory exists and is writable
+- Verify Git binary is in the configured `bin_path`
+- Check logs for specific error messages
+
+**Connection refused errors**
+- Verify Gitaly is running: `ps aux | grep gitaly`
+- Check the socket path matches GitLab's configuration
+- Ensure file permissions allow GitLab to access the socket
+
+**High memory usage**
+- Review `gitaly-ruby` worker count and memory limits
+- Check for memory-intensive operations in logs
+- Consider adjusting `max_rss` and restart thresholds
+
+## Additional Resources
+
+- [GitLab Administration Guide](https://docs.gitlab.com/ee/administration/gitaly/)
+- [Gitaly Reference Documentation](https://docs.gitlab.com/ee/administration/gitaly/reference)
+- [Contributing to Gitaly](https://gitlab.com/gitlab-org/gitaly/-/blob/master/CONTRIBUTING.md)
+- [Observability Documentation](https://gitlab.com/gitlab-org/gitaly/-/blob/master/doc/observability.md)
