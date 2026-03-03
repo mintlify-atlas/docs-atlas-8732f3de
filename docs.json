@@ -122,7 +122,8 @@
           {
             "group": "Praefect API",
             "pages": [
-              "api/praefect-service"
+              "api/praefect-service",
+              "api/transaction-service"
             ]
           }
         ]
