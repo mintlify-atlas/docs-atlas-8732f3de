@@ -1,0 +1,162 @@
+{
+  "projectType": "api-service",
+  "projectName": "Gitaly",
+  "projectDescription": "A Git RPC service for handling all Git operations made by GitLab with high-availability and horizontal scaling capabilities.",
+  "theme": "aspen",
+  "primaryColor": "#FC6D26",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "architecture",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Setup & Configuration",
+            "pages": [
+              "setup/installation",
+              "setup/configuration",
+              "setup/authentication",
+              "setup/storage"
+            ]
+          },
+          {
+            "group": "High Availability",
+            "pages": [
+              "ha/overview",
+              "ha/praefect",
+              "ha/replication",
+              "ha/failover"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/monitoring",
+              "operations/backpressure",
+              "operations/backup",
+              "operations/maintenance"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/object-pools",
+              "advanced/cgroups",
+              "advanced/sidechannel",
+              "advanced/distributed-tracing"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/getting-started",
+              "development/contributing",
+              "development/testing",
+              "development/style-guide"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "gRPC Services",
+            "pages": [
+              "api/overview",
+              "api/rpc-categories"
+            ]
+          },
+          {
+            "group": "Repository Services",
+            "pages": [
+              "api/repository-service",
+              "api/blob-service",
+              "api/commit-service",
+              "api/ref-service"
+            ]
+          },
+          {
+            "group": "Git Operations",
+            "pages": [
+              "api/operations-service",
+              "api/remote-service",
+              "api/smarthttp-service",
+              "api/ssh-service"
+            ]
+          },
+          {
+            "group": "Utility Services",
+            "pages": [
+              "api/diff-service",
+              "api/conflicts-service",
+              "api/cleanup-service",
+              "api/namespace-service",
+              "api/objectpool-service",
+              "api/hook-service",
+              "api/wiki-service",
+              "api/server-service"
+            ]
+          },
+          {
+            "group": "Praefect API",
+            "pages": [
+              "api/praefect-service"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Client Libraries",
+        "groups": [
+          {
+            "group": "Using Clients",
+            "pages": [
+              "clients/overview",
+              "clients/go-client",
+              "clients/ruby-client"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "High-performance Git RPC service using gRPC protocol",
+    "Horizontal scaling and fault-tolerant storage via Praefect",
+    "Comprehensive repository operations (clone, push, pull, merge)",
+    "Built-in caching and backpressure mechanisms",
+    "High availability with automatic replication and failover",
+    "Object pooling for efficient repository storage",
+    "Distributed tracing and Prometheus monitoring",
+    "Transaction support for consistent multi-node writes"
+  ],
+  "publicApiSurface": [
+    "BlobService - GetBlob, GetBlobs, ListBlobs, ListAllBlobs, GetLFSPointers",
+    "CommitService - ListCommits, FindCommit, CommitStats, GetTreeEntries",
+    "RepositoryService - CreateRepository, RepositoryExists, GarbageCollect, RepositorySize",
+    "RefService - FindAllBranches, FindAllTags, CreateBranch, DeleteRefs",
+    "OperationsService - UserCreateBranch, UserMergeToRef, UserCommitFiles",
+    "RemoteService - AddRemote, FetchInternalRemote, UpdateRemoteMirror",
+    "SmartHTTPService - InfoRefsUploadPack, PostUploadPack, PostReceivePack",
+    "SSHService - SSHUploadPack, SSHReceivePack, SSHUploadArchive",
+    "DiffService - CommitDiff, CommitDelta, RawDiff, RawPatch",
+    "ConflictsService - ListConflictFiles, ResolveConflicts",
+    "CleanupService - ApplyBfgObjectMapStream",
+    "NamespaceService - AddNamespace, RemoveNamespace, RenameNamespace",
+    "ObjectPoolService - CreateObjectPool, LinkRepositoryToObjectPool",
+    "HookService - PreReceiveHook, PostReceiveHook, UpdateHook",
+    "WikiService - WikiWritePage, WikiUpdatePage, WikiFindPage",
+    "ServerService - ServerInfo, DiskStatistics",
+    "PraefectInfoService - RepositoryReplicas, Dataloss"
+  ]
+}
